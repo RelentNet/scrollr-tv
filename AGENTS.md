@@ -377,6 +377,12 @@ Lessons the Home session learned running this repo; every worker reads them.
   console action. `docs/cdc-runbook.md` has the topology.
 - **Kubernetes collapses `$$` to `$` in pod env values.** A psql script passed
   through `env` cannot use `DO $$ … $$` blocks; use plain SQL.
+- **A "detached" process launched by a worker dies with the Claude app** (SCROLLR-302,
+  5 Oct 2026): the overnight sampler was started with `Start-Process -WindowStyle Hidden`
+  from a subagent's shell, wrote its meta line, and was gone by kickoff with no error,
+  no sleep event and no shutdown in the Windows System log. Anything that must outlive
+  the session on Brandon's box runs as a Windows scheduled task
+  (`Register-ScheduledTask`, `-WakeToRun`), never as a child of a tool shell.
 - **Verify webview changes in web mode, not in the Tauri app** (SCROLLR-249/250,
   29 Sep 2026): `make setup DEV_API=remote` then `cd desktop && npm run web` opens
   `http://localhost:5190/web.html` with the real ticker and main window against the

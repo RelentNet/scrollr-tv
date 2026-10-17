@@ -383,6 +383,14 @@ Lessons the Home session learned running this repo; every worker reads them.
   no sleep event and no shutdown in the Windows System log. Anything that must outlive
   the session on Brandon's box runs as a Windows scheduled task
   (`Register-ScheduledTask`, `-WakeToRun`), never as a child of a tool shell.
+- **A folder a tool shell creates under the user profile is virtualized** (SCROLLR-302,
+  16 Oct 2026): the 15 Oct sampler task fired and died with `0xFFFD0000` ("the `-File`
+  argument does not exist") because its wrapper and key had been written by a Claude tool
+  shell into a new `%LOCALAPPDATA%\scrollr-measure`. Every tool shell sees that folder,
+  sandboxed or not; the Task Scheduler's process does not. Anything another process must
+  read goes under the repo (git-ignored `results/` is shared) or a plain root path such as
+  `C:\scrollr-measure`, and the task is smoke-tested with `Start-ScheduledTask` before
+  it is left to fire. The reproducer is a scheduled `cmd.exe /c dir <path> > probe.txt`.
 - **Verify webview changes in web mode, not in the Tauri app** (SCROLLR-249/250,
   29 Sep 2026): `make setup DEV_API=remote` then `cd desktop && npm run web` opens
   `http://localhost:5190/web.html` with the real ticker and main window against the

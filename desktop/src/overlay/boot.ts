@@ -144,9 +144,42 @@ function mountQr(url: string) {
 // records on the app's own event bus, as a real feed update would.
 
 interface FileItem { id: string; title: string; detail: string; link: string; at: string | null }
-interface FileFeed { file: string; name: string; url: string; items: FileItem[] }
-interface FilesState { version: string; overlay?: { title: string; tagline: string }; feeds: FileFeed[] }
+interface FileFeed { file: string; slug: string; name: string; color: string; url: string; items: FileItem[] }
+interface FilesState { version: string; overlay?: { mode: "split" | "merged"; title: string; tagline: string }; feeds: FileFeed[] }
 type Row = Record<string, unknown>;
+
+// Split mode (the default): every file is a widget of its own, with its own
+// page, tab and colour, so the bar cycles area by area. The widget ids are
+// not in the server's catalog, so the catalog response is extended with one
+// entry per file (`files_<slug>`, source rss) before the app reads it; from
+// then on the ticker resolves them like any news widget. Merged mode folds
+// every file into the account's Custom RSS widget instead.
+const FILE_ID_PREFIX = "files_";
+const split = () => files.overlay?.mode !== "merged";
+const widgetIdOf = (f: FileFeed) => `${FILE_ID_PREFIX}${f.slug}`;
+const feedByWidgetId = (id: string) => files.feeds.find((f) => widgetIdOf(f) === id);
+
+/** What a change to the folder means for the widget list: new, gone, renamed or recoloured files. */
+const feedShape = (f: FilesState) => f.feeds.map((x) => `${x.slug}|${x.name}|${x.color}`).join("\n") + `|${f.overlay?.mode}`;
+
+function mergeCatalog(c: Row, f: FilesState): Row {
+  if (!split() || !f.feeds.length) return c;
+  const widgets = ((c.widgets as Row[] | undefined) ?? []).filter((w) => !String(w.id).startsWith(FILE_ID_PREFIX));
+  const extra = f.feeds.map((feed, i) => ({
+    id: widgetIdOf(feed),
+    name: feed.name,
+    description: `From ${feed.file} in the scrollr-tv files folder.`,
+    source: "rss",
+    category: "news",
+    color: feed.color,
+    default_config: { feeds: [{ name: feed.name, url: feed.url }] },
+    required_tier: "free",
+    order: 10_000 + i,
+    free_slot: true,
+    hidden: true,
+  }));
+  return { ...c, version: `${c.version}+files-${f.version}`, widgets: [...widgets, ...extra] };
+}
 
 // ── The page tab's title and tagline ──────────────────────────────
 //
@@ -156,9 +189,16 @@ type Row = Record<string, unknown>;
 // under it ("powered by Scrollr"). The label is the app's own markup, so
 // this watches the bar and rewrites that one tab whenever it is drawn.
 function applyTitle() {
-  const title = params.get("title") ?? files.overlay?.title ?? "";
   const tagline = params.get("tagline") ?? files.overlay?.tagline ?? "";
-  for (const label of document.querySelectorAll<HTMLElement>(`[data-label="${FILE_WIDGET}"]`)) {
+  const labels = split()
+    ? [...document.querySelectorAll<HTMLElement>(`[data-label^="${FILE_ID_PREFIX}"]`)]
+    : [...document.querySelectorAll<HTMLElement>(`[data-label="${FILE_WIDGET}"]`)];
+  for (const label of labels) {
+    // Split: the tab shows the file's whole name, not its first word.
+    // Merged: _overlay.json's title (or ?title=), if any.
+    const title = split()
+      ? (params.get("title") ?? feedByWidgetId(label.dataset.label ?? "")?.name ?? "")
+      : (params.get("title") ?? files.overlay?.title ?? "");
     const name = label.querySelector<HTMLElement>("[data-name]");
     if (name && title) {
       if (name.textContent !== title.toUpperCase()) name.textContent = title.toUpperCase();
@@ -238,8 +278,24 @@ function fileRows(f: FilesState): Row[] {
 /** The account's dashboard with the files folded in. */
 function mergeDashboard(d: Row, f: FilesState): Row {
   if (!f.feeds.length) return d;
-  const widgets = [...((d.widgets as Row[] | undefined) ?? [])];
+  const widgets = [...((d.widgets as Row[] | undefined) ?? [])].filter((w) => !String(w.widget_type).startsWith(FILE_ID_PREFIX));
   const feeds = f.feeds.map((x) => ({ name: x.name, url: x.url }));
+  const data = (d.data as Row | undefined) ?? {};
+  const rss = ((data.rss as Row[] | undefined) ?? []).filter((r) => !String(r.feed_url).startsWith("scrollr-tv://"));
+  if (split()) {
+    for (const feed of f.feeds) {
+      widgets.push({
+        id: rowId(`widget:${feed.url}`),
+        widget_type: widgetIdOf(feed),
+        enabled: true,
+        ticker_enabled: true,
+        config: { feeds: [{ name: feed.name, url: feed.url }] },
+        created_at: fileStamp,
+        updated_at: fileStamp,
+      });
+    }
+    return { ...d, widgets, data: { ...data, rss: [...rss, ...fileRows(f)] } };
+  }
   const i = widgets.findIndex((w) => w.widget_type === FILE_WIDGET);
   if (i >= 0) {
     const cfg = (widgets[i].config as Row | undefined) ?? {};
@@ -256,8 +312,6 @@ function mergeDashboard(d: Row, f: FilesState): Row {
       updated_at: fileStamp,
     });
   }
-  const data = (d.data as Row | undefined) ?? {};
-  const rss = ((data.rss as Row[] | undefined) ?? []).filter((r) => !String(r.feed_url).startsWith("scrollr-tv://"));
   return { ...d, widgets, data: { ...data, rss: [...rss, ...fileRows(f)] } };
 }
 
@@ -288,7 +342,11 @@ function watchFiles() {
     const next = await fetchFiles();
     if (!next) return;
     if (next.version !== files.version) {
+      const reshaped = feedShape(next) !== feedShape(files);
       pushFileChange(files, next);
+      // A new, gone, renamed or recoloured file is a catalog change: the app
+      // refetches the catalog when the network comes back, so tell it that.
+      if (reshaped) window.dispatchEvent(new Event("online"));
       applyTitle();
     }
     else if (Date.now() - Date.parse(fileStamp) > FILES_RESTAMP_MS && next.feeds.length) pushFileChange(files, next);
@@ -315,11 +373,16 @@ async function send(rid: number) {
     signal: r.abort.signal,
   });
   let resHeaders = [...res.headers];
+  const rewrite = (body: Row) => {
+    r.reader = new Blob([JSON.stringify(body)]).stream().getReader();
+    resHeaders = resHeaders.filter(([k]) => !/^(content-length|etag)$/i.test(k));
+  };
   if (res.ok && /\/dashboard(\?|$)/.test(url) && files.feeds.length) {
     // The account's dashboard, with the files folded in (see above).
-    const merged = mergeDashboard((await res.json()) as Row, files);
-    r.reader = new Blob([JSON.stringify(merged)]).stream().getReader();
-    resHeaders = resHeaders.filter(([k]) => k.toLowerCase() !== "content-length");
+    rewrite(mergeDashboard((await res.json()) as Row, files));
+  } else if (res.ok && /\/catalog(\?|$)/.test(url) && files.feeds.length) {
+    // The catalog, with one widget per file (split mode).
+    rewrite(mergeCatalog((await res.json()) as Row, files));
   } else {
     r.reader = res.body?.getReader();
   }

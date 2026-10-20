@@ -93,32 +93,41 @@ house notes. Edit a text file, the bar follows within seconds.
 **How it works.** The server watches a folder (`server/src/files.mjs`:
 `%APPDATA%\scrollr-tv\files`, or `--files <dir>` / `SCROLLR_TV_FILES`; two
 sample files are written on first run) and serves it as `GET /files`. The
-overlay (`src/overlay/boot.ts`, "The files widget") folds those files into the
-account's dashboard as feeds of the **Custom RSS** widget (`rss_custom`, added
-client-side when the account has none) with each line as a headline row. So
-the bar shows them with the same headline chips and page cells it uses for
-news, and no shared ticker code changed. A file change is pushed onto the
-app's own event bus as CDC records, exactly as a real feed update arrives.
+overlay (`src/overlay/boot.ts`, "The files widget") turns each file into a
+news-source widget: it extends the catalog response with one entry per file
+(`files_<slug>`, source `rss`, the file's name and colour) and adds a widget
+row and headline rows to the dashboard response. So **every file is its own
+bar**: in Pages mode the ticker cycles Main Stage, then Gaming Room, then
+K-Pop Room, each page showing only that area's schedule under its own tab and
+colour, and in Continuous mode each area's chips carry its tab. The bar draws
+them with the same headline chips and page cells it uses for news, and no
+shared ticker code changed. A file change is pushed onto the app's own event
+bus as CDC records, exactly as a real feed update arrives; a new or renamed
+file triggers a catalog refetch. `"mode": "merged"` in `_overlay.json` folds
+every file into one Custom RSS widget instead (one page, a column per file).
 
 **File formats, one feed per file.** The feed's name is the chip's tab
 (SCHEDULE, NOTES).
 
 - `name.md` / `name.txt`: the first `# Heading` is the feed name (else the
-  file name). Each `- ` bullet or non-empty line is an item. `Title — detail`,
-  `Title | detail` or `Title: detail` split into headline and detail line. A
-  leading `9:00 AM` / `14:30` keeps the day in order.
+  file name); an optional `color: #hex` line sets the area's colour (else one
+  from a palette). Each `- ` bullet or non-empty line is an item. `Title —
+  detail`, `Title | detail` or `Title: detail` split into headline and detail
+  line. A leading `9:00 AM` / `14:30` keeps the day in order. Files sort by
+  name, so `1-main-stage.md`, `2-gaming-room.md` fixes the cycle order.
   ```md
-  # Schedule
-  - 9:00 AM Doors open — Main hall
-  - 10:00 AM Opening panel — Stage A
+  # Main Stage
+  color: #ee802f
+  - 11:30 AM Love & Bugs In Another World — Main Stage, until 12:15
+  - 1:00 PM Dragon Ball Universe — Main Stage, until 1:45
   ```
-- `name.json`: `{ "name": "...", "items": [ { "title", "detail"?, "at"?,
-  "link"? } ] }`.
+- `name.json`: `{ "name": "...", "color"?: "#hex", "items": [ { "title",
+  "detail"?, "at"?, "link"? } ] }`.
 
-**Title, tagline and QR code.** `_overlay.json` in the files folder
-(`{ "title": "Anime Mundo", "tagline": "powered by Scrollr" }`) names the
-widget's page tab and puts a line under it; `?title=` / `?tagline=` override
-it per source. A QR code for myscrollr.com sits at the right end of the bar
+**Tagline, title and QR code.** `_overlay.json` in the files folder
+(`{ "mode": "split", "tagline": "powered by Scrollr" }`) puts a line under
+each area's tab; in merged mode `"title"` names the one tab. `?title=` /
+`?tagline=` override per source. A QR code for myscrollr.com sits at the right end of the bar
 in place of the clock (`?qr=<url>` for another link, `?qr=0` for none, `?utils=clock`
 to have the clock back beside it); the bar narrows by the code's 72 px so
 nothing runs under it.

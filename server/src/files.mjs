@@ -6,7 +6,8 @@
 //
 // Formats, one feed per file:
 //   name.md / name.txt    first `# Heading` is the feed's name (else the file
-//                         name). Each `- ` / `* ` bullet, or each non-empty
+//                         name); an optional `color: #hex` line sets its
+//                         colour. Each `- ` / `* ` bullet, or each non-empty
 //                         line, is an item. "Title — detail", "Title | detail"
 //                         or "Title: detail" split into a title and a detail
 //                         line. A leading "9:00 AM" / "14:30" is kept in the
@@ -33,11 +34,12 @@ const OVERLAY_FILE = "_overlay.json";
 
 const SAMPLES = {
   [OVERLAY_FILE]: `{
-  "title": "Notes",
+  "mode": "split",
   "tagline": "powered by Scrollr"
 }
 `,
   "schedule.md": `# Schedule
+color: #ee802f
 
 - 9:00 AM Doors open — Main hall
 - 10:00 AM Opening panel — Stage A
@@ -78,9 +80,12 @@ function splitLine(line) {
   return { title, detail, at };
 }
 
+const COLOR = /^color:\s*(#(?:[0-9a-f]{3}|[0-9a-f]{6}))\s*$/i;
+
 export function parseText(name, text) {
   const lines = text.split(/\r?\n/);
   let feedName = name;
+  let color;
   const items = [];
   for (const raw of lines) {
     const line = raw.trim();
@@ -90,11 +95,16 @@ export function parseText(name, text) {
       if (items.length === 0 && feedName === name) feedName = h[1].trim();
       continue;
     }
+    const c = COLOR.exec(line);
+    if (c) {
+      color = c[1];
+      continue;
+    }
     const body = line.replace(/^[-*•]\s+/, "");
     if (!body) continue;
     items.push(splitLine(body));
   }
-  return { name: feedName, items };
+  return { name: feedName, color, items };
 }
 
 export function parseJson(name, text) {
@@ -109,7 +119,25 @@ export function parseJson(name, text) {
           link: typeof it.link === "string" ? it.link : undefined,
         },
   );
-  return { name: (!Array.isArray(j) && j.name) || j.title || name, items: items.filter((i) => i.title) };
+  return {
+    name: (!Array.isArray(j) && j.name) || j.title || name,
+    color: !Array.isArray(j) && typeof j.color === "string" && COLOR.test(`color: ${j.color}`) ? j.color : undefined,
+    items: items.filter((i) => i.title),
+  };
+}
+
+/** A widget colour per file when the file names none: distinct, bar-friendly. */
+const PALETTE = ["#ee802f", "#22c55e", "#ec4899", "#6366f1", "#14b8a6", "#eab308", "#f43f5e", "#0ea5e9"];
+
+/** "1-main-stage.md" → "main_stage": the widget id suffix. */
+export function slugOf(file) {
+  const s = file
+    .replace(/\.[^.]+$/, "")
+    .replace(/^\d+[-_. ]*/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return s || "file";
 }
 
 /** Items in day order when they carry times (by today's clock), else as written. */
@@ -140,14 +168,20 @@ async function load() {
   const names = all.filter((f) => /\.(md|txt|json)$/i.test(f) && !/^[._]/.test(f)).sort();
   const feeds = [];
   const hash = crypto.createHash("sha1");
-  // `_overlay.json`: the page tab's title and the line under it. Not a feed.
-  let overlay = { title: "", tagline: "powered by Scrollr" };
+  // `_overlay.json`: how the files show. Not a feed.
+  //   mode     "split" (default): every file is its own widget, with its own
+  //            page, tab and colour, so the bar cycles area by area;
+  //            "merged": one widget, one page, a column per file.
+  //   tagline  the line under each tab ("powered by Scrollr")
+  //   title    merged mode only: the one tab's name
+  let overlay = { mode: "split", title: "", tagline: "powered by Scrollr" };
   if (all.includes(OVERLAY_FILE)) {
     try {
       const text = await fsp.readFile(path.join(FILES_DIR, OVERLAY_FILE), "utf8");
       hash.update(OVERLAY_FILE).update("\0").update(text).update("\0");
       const j = JSON.parse(text);
       overlay = {
+        mode: j.mode === "merged" ? "merged" : "split",
         title: typeof j.title === "string" ? j.title : "",
         tagline: typeof j.tagline === "string" ? j.tagline : overlay.tagline,
       };
@@ -171,9 +205,13 @@ async function load() {
       parsed = { name: base, items: [{ title: `${file}: ${err.message}`, detail: "", at: null }] };
     }
     const url = `scrollr-tv://files/${encodeURIComponent(file)}`;
+    let slug = slugOf(file);
+    while (feeds.some((f) => f.slug === slug)) slug += "_";
     feeds.push({
       file,
+      slug,
       name: parsed.name,
+      color: parsed.color ?? PALETTE[feeds.length % PALETTE.length],
       url,
       items: order(parsed.items).map((it, i) => ({
         id: `${file}#${i}`,

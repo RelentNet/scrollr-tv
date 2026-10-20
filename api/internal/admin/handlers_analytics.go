@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -33,7 +34,13 @@ var (
 	signupAnalyticsGroup   singleflight.Group
 	signupAnalyticsTimeout = 25 * time.Second
 	signupInteractiveWait  = 750 * time.Millisecond
+	signupLocalCache       sync.Map
 )
+
+type signupLocalSnapshot struct {
+	report  accounts.SignupAnalytics
+	expires time.Time
+}
 
 type cachedAnalyticsResult struct {
 	Report accounts.SignupAnalytics
@@ -123,24 +130,12 @@ func refreshSignupAnalytics(application string, days int, force bool) <-chan sin
 			report, err, ttl = signupUnavailable(application, days), nil, signupAnalyticsUnavailableTTL
 		}
 		if err != nil {
-			if platform.Rdb != nil {
-				cacheCtx, done := context.WithTimeout(context.Background(), 2*time.Second)
-				raw, _ := json.Marshal(signupUnavailable(application, days))
-				_ = platform.Rdb.Set(cacheCtx, key, raw, signupAnalyticsUnavailableTTL).Err()
-				done()
-			}
+			storeSignupAnalyticsCache(key, signupUnavailable(application, days), signupAnalyticsUnavailableTTL)
 			return cachedAnalyticsResult{}, err
 		}
-		if platform.Rdb != nil {
-			// Own context: scanCtx may be the thing that just expired.
-			cacheCtx, cacheCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cacheCancel()
-			if raw, err := json.Marshal(report); err == nil {
-				_ = platform.Rdb.Set(cacheCtx, key, raw, ttl).Err()
-				if report.Available {
-					_ = platform.Rdb.Set(cacheCtx, key+":retained", raw, signupAnalyticsRetainedTTL).Err()
-				}
-			}
+		storeSignupAnalyticsCache(key, report, ttl)
+		if report.Available {
+			storeSignupAnalyticsCache(key+":retained", report, signupAnalyticsRetainedTTL)
 		}
 		return cachedAnalyticsResult{Report: report}, nil
 	})
@@ -157,8 +152,29 @@ func signupUnavailable(application string, days int) accounts.SignupAnalytics {
 	}
 }
 
+// Without Redis, retain the eight possible app/window snapshots locally so a
+// completed background read is still available to the next poll.
+func storeSignupAnalyticsCache(key string, report accounts.SignupAnalytics, ttl time.Duration) {
+	if platform.Rdb == nil {
+		signupLocalCache.Store(key, signupLocalSnapshot{report, time.Now().Add(ttl)})
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if raw, err := json.Marshal(report); err == nil {
+		_ = platform.Rdb.Set(ctx, key, raw, ttl).Err()
+	}
+}
+
 func readSignupAnalyticsCache(ctx context.Context, key string) (accounts.SignupAnalytics, bool) {
 	if platform.Rdb == nil {
+		if value, ok := signupLocalCache.Load(key); ok {
+			snapshot := value.(signupLocalSnapshot)
+			if time.Now().Before(snapshot.expires) {
+				return snapshot.report, true
+			}
+			signupLocalCache.Delete(key)
+		}
 		return accounts.SignupAnalytics{}, false
 	}
 	raw, err := platform.Rdb.Get(ctx, key).Bytes()

@@ -101,3 +101,25 @@ func TestSignupWarmerRefreshesAllApplicationsAndWindows(t *testing.T) {
 		}
 	}
 }
+
+func TestSignupBackgroundResultRemainsReadableWithoutRedis(t *testing.T) {
+	previousRedis, previousFetch := platform.Rdb, fetchSignupAnalytics
+	platform.Rdb = nil
+	signupLocalCache.Clear()
+	defer func() {
+		platform.Rdb, fetchSignupAnalytics = previousRedis, previousFetch
+		signupLocalCache.Clear()
+	}()
+	calls := 0
+	fetchSignupAnalytics = func(_ context.Context, app string, days int, _ time.Time) (accounts.SignupAnalytics, error) {
+		calls++
+		return analyticsReport(app, days), nil
+	}
+	if result := <-refreshSignupAnalytics("desktop", 7, true); result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	got, hit, err := cachedSignupAnalytics(context.Background(), "desktop", 7)
+	if err != nil || !hit || !got.Available || calls != 1 {
+		t.Fatalf("completed local snapshot lost: %+v hit=%v calls=%d err=%v", got, hit, calls, err)
+	}
+}

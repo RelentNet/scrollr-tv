@@ -347,3 +347,5 @@ The scan retains its 25-second budget and existing coverage rules.
 Failed refreshes never overwrite the last successful snapshot or its
 `generated_at`. Short negative caching prevents a failed source from being
 rescanned on every poll. No request claims an unavailable count is zero.
+Without Redis, the same eight app/window snapshots are retained in process
+memory so a completed background scan remains available to subsequent polls.

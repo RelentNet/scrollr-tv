@@ -41,7 +41,8 @@ type cachedAnalyticsResult struct {
 }
 
 func HandleGetAnalytics(c *fiber.Ctx) error {
-	application := c.Query("application", "website")
+	// The scan may outlive this request; Fiber query strings alias its buffer.
+	application := strings.Clone(c.Query("application", "website"))
 	if application != "website" && application != "desktop" {
 		return c.Status(fiber.StatusBadRequest).JSON(platform.ErrorResponse{Error: "application must be website or desktop"})
 	}
@@ -81,11 +82,12 @@ func cachedSignupAnalytics(ctx context.Context, application string, days int) (a
 		return accounts.SignupAnalytics{}, false, err
 	}
 
-	result := refreshSignupAnalytics(application, days, false)
 	if report, ok := readSignupAnalyticsCache(ctx, key+":retained"); ok && report.Available {
+		refreshSignupAnalytics(application, days, false)
 		report.Stale, report.Refreshing = true, true
 		return report, true, nil
 	}
+	result := refreshSignupAnalytics(application, days, false)
 
 	select {
 	case <-ctx.Done():

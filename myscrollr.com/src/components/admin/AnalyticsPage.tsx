@@ -23,7 +23,6 @@ import {
   CoverageNote,
   DefinitionDisclosure,
   DeltaBadge,
-  LINK,
   Loaded,
   MetricValue,
   PageFrame,
@@ -1459,13 +1458,11 @@ export function SignupDiagnostics({
           : 'space-y-3 border-t border-base-300/60 p-4'
       }
     >
-      <p className="text-sm text-base-content/60">
-        Troubleshooting data: registration events and safe error categories.
-        Counts are events, not people or completed signups. These pre-account
-        logs cover the selected application; OS, version and plan filters do not
-        apply.
+      <p className="analytics-detail-caption">
+        Registration events, not people or completed signups. OS, version and
+        plan filters do not apply to these pre-account logs.
       </p>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="analytics-diagnostic-controls">
         <Selector
           label="Application"
           options={APPLICATIONS}
@@ -1549,7 +1546,7 @@ function BreakdownTable({
         <p className="text-sm text-base-content/65">Nothing in this window.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="analytics-breakdown-table w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-base-content/55">
                 <th className="py-1 pr-3 font-medium">{keyLabel}</th>
@@ -1560,7 +1557,7 @@ function BreakdownTable({
             <tbody>
               {list.map((row) => (
                 <tr key={row.key} className="border-t border-base-300/50">
-                  <td className="max-w-[16rem] truncate py-1 pr-3">
+                  <td className="py-1 pr-3" title={row.key || '(none)'}>
                     {row.key || '(none)'}
                   </td>
                   <td className="py-1 pr-3 text-right tabular-nums">
@@ -1598,8 +1595,9 @@ function WebsiteBlock({
       <Stamp at={w.generated_at}>
         {w.cached ? ' · cached PostHog answer' : ''}
       </Stamp>
-      <CoverageNote coverage={w.coverage} />
-      <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {w.coverage.partial && <CoverageNote coverage={w.coverage} />}
+      <p className="analytics-detail-caption">{windowLabel}</p>
+      <div className="analytics-stat-grid">
         {(
           [
             ['Unique visitors', w.visitors],
@@ -1608,15 +1606,49 @@ function WebsiteBlock({
             ['Signups', w.signups],
           ] as const
         ).map(([title, metric]) => (
-          <Card key={title} title={title} label={windowLabel}>
-            <MetricValue metric={metric}>
+          <Card key={title} title={title}>
+            <MetricValue
+              metric={
+                metric.available ? { ...metric, note: undefined } : metric
+              }
+            >
               <p className="mt-1 text-sm text-base-content/60">
-                <DeltaBadge comparison={metric.comparison} />
+                {metric.comparison.comparable ? (
+                  <DeltaBadge comparison={metric.comparison} />
+                ) : (
+                  <span className="text-xs">No comparable period</span>
+                )}
               </p>
             </MetricValue>
           </Card>
         ))}
       </div>
+      <p className="analytics-detail-caption">
+        Downloads count button clicks, not installs. Signups are website events
+        reported to PostHog.
+      </p>
+      <DefinitionDisclosure summary="Metric definitions and coverage">
+        <p>{w.definition}</p>
+        <CoverageNote coverage={w.coverage} />
+        {(
+          [
+            ['Unique visitors', w.visitors],
+            ['Pageviews', w.pageviews],
+            ['Downloads', w.downloads],
+            ['Signups', w.signups],
+          ] as const
+        ).map(
+          ([title, metric]) =>
+            (metric.note || metric.comparison.note) && (
+              <p key={title}>
+                <strong>{title}:</strong>{' '}
+                {[metric.note, metric.comparison.note]
+                  .filter(Boolean)
+                  .join(' ')}
+              </p>
+            ),
+        )}
+      </DefinitionDisclosure>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Pageviews per bucket" label={windowLabel}>
           <Bars buckets={w.curve} step={w.curve_step} label="Pageviews" />
@@ -1659,9 +1691,6 @@ function WebsiteBlock({
           note={w.breakdown_note}
         />
       </div>
-      <DefinitionDisclosure>
-        <p>{w.definition}</p>
-      </DefinitionDisclosure>
     </div>
   )
 }
@@ -1698,9 +1727,8 @@ function SignupBlock({ signup }: { signup: SignupAnalytics }) {
               ? 'Registration errors need a look'
               : 'No registration errors found'}
         </h3>
-        <p>
-          {num(eventTotal)} observed events in retained authentication logs.
-          These are steps in registration, not a count of people.
+        <p className="analytics-diagnostic-total">
+          <strong>{num(eventTotal)}</strong> observed registration events
         </p>
         <p className="text-sm text-base-content/60">
           Coverage is limited; missing events do not establish zero signups or a
@@ -1716,10 +1744,9 @@ function SignupBlock({ signup }: { signup: SignupAnalytics }) {
         <details className="analytics-diagnostic-events">
           <summary>Inspect recorded steps</summary>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="analytics-steps-table w-full text-sm">
               <thead>
                 <tr className="bg-base-200/40 text-left text-xs text-base-content/55">
-                  <th className="px-4 py-3 font-medium">Path</th>
                   <th className="px-4 py-3 font-medium">Event</th>
                   <th className="px-4 py-3 text-right font-medium">Count</th>
                   <th className="px-4 py-3 text-right font-medium">Errors</th>
@@ -1737,10 +1764,12 @@ function SignupBlock({ signup }: { signup: SignupAnalytics }) {
                   }
                   return (
                     <tr key={stage.key} className="border-t border-base-300/50">
-                      <td className="px-4 py-2 text-base-content/55">
-                        {stage.path}
+                      <td className="px-4 py-2 font-medium">
+                        {stage.label}
+                        <span className="analytics-table-secondary">
+                          {stage.path}
+                        </span>
                       </td>
-                      <td className="px-4 py-2 font-medium">{stage.label}</td>
                       <td className="px-4 py-2 text-right tabular-nums">
                         {num(metrics.events)}
                       </td>
@@ -2407,11 +2436,7 @@ export function RevenueContent({
               content: (
                 <>
                   {' '}
-                  <Section
-                    id="new-paying"
-                    title="New paying customers"
-                    lede={r.new_paying.definition}
-                  >
+                  <Section id="new-paying" title="New paying customers">
                     <Card title="First payments" label={windowLabel}>
                       {r.new_paying.available ? (
                         <>
@@ -2433,6 +2458,9 @@ export function RevenueContent({
                         <Unmeasurable note={r.new_paying.note} />
                       )}
                     </Card>
+                    <DefinitionDisclosure summary="What counts as a first payment">
+                      <p>{r.new_paying.definition}</p>
+                    </DefinitionDisclosure>
                   </Section>
                 </>
               ),
@@ -2445,7 +2473,7 @@ export function RevenueContent({
                   <Section
                     id="earnings"
                     title="Net earnings"
-                    lede="Stripe balance transactions by created time. Each currency stands alone; nothing is converted or added across currencies."
+                    lede="After refunds and fees. Currencies are reported separately."
                   >
                     <FactList facts={facts.slice(-1)} />
                     <div className="space-y-4">
@@ -2463,38 +2491,43 @@ export function RevenueContent({
                           </span>
                         )}
                       </div>
-                      <CoverageNote coverage={r.earnings.coverage} />
+                      {r.earnings.coverage.partial && (
+                        <CoverageNote coverage={r.earnings.coverage} />
+                      )}
                       <div className="grid items-start gap-4 lg:grid-cols-2">
                         <Card
                           title={`Net (${r.earnings.primary_currency.toUpperCase()})`}
                           label={windowLabel}
                         >
-                          <MetricValue
-                            metric={r.earnings.net}
-                            format={(v) =>
-                              formatMinor(v, r.earnings.primary_currency)
-                            }
-                          >
-                            <p className="mt-1 text-sm text-base-content/60">
-                              <DeltaBadge
-                                comparison={r.earnings.net.comparison}
-                                format={(v) =>
-                                  formatMinor(v, r.earnings.primary_currency)
-                                }
-                              />
-                            </p>
-                          </MetricValue>
+                          <Big>
+                            <MetricText
+                              value={formatMinor(
+                                r.earnings.net.value,
+                                r.earnings.primary_currency,
+                              )}
+                            />
+                          </Big>
+                          <p className="mt-1 text-sm text-base-content/60">
+                            <DeltaBadge
+                              comparison={r.earnings.net.comparison}
+                              format={(v) =>
+                                formatMinor(v, r.earnings.primary_currency)
+                              }
+                            />
+                          </p>
                         </Card>
-                        <Card
-                          title={`Per bucket (${r.earnings.primary_currency.toUpperCase()}, minor units)`}
-                          label={windowLabel}
-                        >
-                          <Bars
+                        <div className="analytics-detail-chart">
+                          <AnalyticsTrend
                             buckets={r.earnings.curve}
                             step={r.earnings.curve_step}
-                            label="Net earnings per bucket"
+                            title="Net earnings per bucket"
+                            unit={r.earnings.primary_currency.toUpperCase()}
+                            format={(value) =>
+                              formatMinor(value, r.earnings.primary_currency)
+                            }
+                            zeroLabel="No net earnings in this window."
                           />
-                        </Card>
+                        </div>
                       </div>
                       {(r.earnings.currencies ?? []).map((c) => (
                         <EarningsBlock
@@ -2524,6 +2557,13 @@ export function RevenueContent({
                       </div>
                       <DefinitionDisclosure>
                         <p>{r.earnings.definition}</p>
+                        <p>
+                          Stripe balance transactions by created time. Each
+                          currency stands alone; nothing is converted or added
+                          across currencies.
+                        </p>
+                        <CoverageNote coverage={r.earnings.coverage} />
+                        {r.earnings.net.note && <p>{r.earnings.net.note}</p>}
                       </DefinitionDisclosure>
                     </div>
                   </Section>
@@ -2543,13 +2583,11 @@ function PlanMixTable({ rows }: { rows: Array<PlanMixRow> }) {
   }
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="analytics-plan-table w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-base-content/55">
-            <th className="py-1 pr-3 font-medium">Tier</th>
-            <th className="py-1 pr-3 font-medium">Interval</th>
+            <th className="py-1 pr-3 font-medium">Plan</th>
             <th className="py-1 pr-3 font-medium">Status</th>
-            <th className="py-1 pr-3 font-medium">Paying</th>
             <th className="py-1 text-right font-medium">Count</th>
           </tr>
         </thead>
@@ -2559,16 +2597,22 @@ function PlanMixTable({ rows }: { rows: Array<PlanMixRow> }) {
               key={`${row.plan}-${row.status}-${row.lifetime}`}
               className="border-t border-base-300/50"
             >
-              <td className="py-1 pr-3">{planLabel(row.tier || row.plan)}</td>
               <td className="py-1 pr-3">
-                {row.lifetime
-                  ? 'Lifetime'
-                  : row.interval
-                    ? planLabel(row.interval)
-                    : '—'}
+                {planLabel(row.tier || row.plan)}
+                <span className="analytics-table-secondary">
+                  {row.lifetime
+                    ? 'Lifetime'
+                    : row.interval
+                      ? planLabel(row.interval)
+                      : '—'}
+                </span>
               </td>
-              <td className="py-1 pr-3">{planLabel(row.status)}</td>
-              <td className="py-1 pr-3">{row.paying ? 'Yes' : 'No'}</td>
+              <td className="py-1 pr-3">
+                {planLabel(row.status)}
+                <span className="analytics-table-secondary">
+                  {row.paying ? 'Paying' : 'Not paying'}
+                </span>
+              </td>
               <td className="py-1 text-right tabular-nums">{num(row.count)}</td>
             </tr>
           ))}
@@ -2596,7 +2640,7 @@ function EarningsBlock({
   return (
     <Card title={`Earnings in ${e.currency.toUpperCase()}`} label={label}>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="analytics-ledger-table w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-base-content/55">
               <th className="py-1 pr-3 font-medium">Line</th>
@@ -2612,20 +2656,22 @@ function EarningsBlock({
                   {num(line.count)}
                 </td>
                 <td className="py-1 text-right tabular-nums">
-                  {money(line.net)}
+                  <MetricText value={money(line.net)} />
                 </td>
               </tr>
             ))}
             <tr className="border-t border-base-300/50 font-semibold">
               <td className="py-1 pr-3">Net</td>
               <td className="py-1 pr-3" />
-              <td className="py-1 text-right tabular-nums">{money(e.net)}</td>
+              <td className="py-1 text-right tabular-nums">
+                <MetricText value={money(e.net)} />
+              </td>
             </tr>
             <tr className="border-t border-base-300/50 text-base-content/70">
               <td className="py-1 pr-3">Gross fees (already subtracted)</td>
               <td className="py-1 pr-3" />
               <td className="py-1 text-right tabular-nums">
-                {money(e.gross_fees)}
+                <MetricText value={money(e.gross_fees)} />
               </td>
             </tr>
           </tbody>
@@ -2779,8 +2825,8 @@ export function SupportContent({
         <MoreDetail title="Support performance">
           <div className="flex flex-wrap items-center gap-3">
             <Stamp at={s.generated_at} />
-            <Link to="/admin/support" className={LINK}>
-              Open support →
+            <Link to="/admin/support" className="analytics-drawer-utility">
+              Tickets <span aria-hidden>↗</span>
             </Link>
           </div>
           <AnalyticsPanels
@@ -2793,15 +2839,10 @@ export function SupportContent({
                     <Section
                       id="queue"
                       title="Queue"
-                      lede="The whole queue as the pipeline classifies it. Paying counts only tickets with a verified account."
+                      lede="Current tickets by status."
                     >
-                      <FactList facts={facts.slice(7)} />
-                      <Card
-                        title="Buckets"
-                        label="Current"
-                        note={s.paying_note}
-                      >
-                        <div className="grid gap-4 sm:grid-cols-4">
+                      <Card title="Queue status" label="Current">
+                        <div className="analytics-queue-stats">
                           <Stat
                             label="Needs attention"
                             value={num(s.needs_attention.total)}
@@ -2853,19 +2894,26 @@ export function SupportContent({
                             {s.autosend.note}
                           </p>
                         </div>
-                        {s.definitions &&
-                          Object.keys(s.definitions).length > 0 && (
-                            <DefinitionDisclosure summary="Bucket definitions">
-                              {Object.entries(s.definitions).map(
-                                ([key, text]) => (
-                                  <p key={key}>
-                                    <strong>{key.replace(/_/g, ' ')}</strong> —{' '}
-                                    {text}
-                                  </p>
-                                ),
-                              )}
-                            </DefinitionDisclosure>
-                          )}
+                        <FactList facts={facts.slice(7)} />
+                        {(s.paying_note ||
+                          Object.keys(s.definitions ?? {}).length > 0) && (
+                          <DefinitionDisclosure summary="Bucket definitions">
+                            <p>
+                              The whole queue as the pipeline classifies it.
+                              Paying counts only tickets with a verified
+                              account.
+                            </p>
+                            {s.paying_note && <p>{s.paying_note}</p>}
+                            {Object.entries(s.definitions ?? {}).map(
+                              ([key, text]) => (
+                                <p key={key}>
+                                  <strong>{key.replace(/_/g, ' ')}</strong> —{' '}
+                                  {text}
+                                </p>
+                              ),
+                            )}
+                          </DefinitionDisclosure>
+                        )}
                       </Card>
                     </Section>
                   </>
@@ -2876,12 +2924,10 @@ export function SupportContent({
                 content: (
                   <>
                     {' '}
-                    <Section
-                      id="flow"
-                      title="Created and completed"
-                      lede={s.history_note}
-                    >
-                      <CoverageNote coverage={s.coverage} />
+                    <Section id="flow" title="Created and completed">
+                      {s.coverage.partial && (
+                        <CoverageNote coverage={s.coverage} />
+                      )}
                       <div className="grid items-start gap-4 lg:grid-cols-2">
                         <Card title="Created" label={windowLabel}>
                           <MetricValue metric={s.created}>
@@ -2932,6 +2978,10 @@ export function SupportContent({
                           label="Estimated open tickets per bucket"
                         />
                       </Card>
+                      <DefinitionDisclosure summary="History and coverage">
+                        <p>{s.history_note}</p>
+                        <CoverageNote coverage={s.coverage} />
+                      </DefinitionDisclosure>
                     </Section>
                   </>
                 ),
@@ -2940,20 +2990,16 @@ export function SupportContent({
                 label: 'Response times',
                 content: (
                   <>
-                    <FactList facts={facts.slice(6, 7)} />
                     <Section
                       id="speed"
                       title="Response and completion"
-                      lede="Medians over tickets in the window, from retained timestamps. The sample size travels with each figure."
+                      lede="Median times for tickets in this window, with sample counts."
                     >
                       <div className="grid items-start gap-4 lg:grid-cols-2">
-                        <Card
-                          title="First response, median"
-                          label={windowLabel}
-                        >
+                        <Card title="Typical first reply" label={windowLabel}>
                           <MetricValue
                             metric={s.first_response_median_hours}
-                            format={formatHours}
+                            format={formatDuration}
                           >
                             <p className="mt-1 text-sm text-base-content/60">
                               <DeltaBadge
@@ -2968,10 +3014,10 @@ export function SupportContent({
                             </p>
                           </MetricValue>
                         </Card>
-                        <Card title="Completion, median" label={windowLabel}>
+                        <Card title="Typical completion" label={windowLabel}>
                           <MetricValue
                             metric={s.completion_median_hours}
-                            format={formatHours}
+                            format={formatDuration}
                           >
                             <p className="mt-1 text-sm text-base-content/60">
                               <DeltaBadge

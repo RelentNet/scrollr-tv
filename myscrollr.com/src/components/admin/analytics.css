@@ -1995,6 +1995,207 @@ html:has(.analytics-drawer[open]) {
 .analytics-detail-content table tbody tr:hover {
   background: color-mix(in srgb, var(--analytics-series) 4%, transparent);
 }
+/* A shared reading rhythm across Growth, Revenue and Support details. */
+:root:not(.dark) .analytics-detail-content .text-warning {
+  color: #946000;
+}
+:root:not(.dark) .analytics-detail-content .text-success {
+  color: #087c65;
+}
+.analytics-detail-caption {
+  color: var(--analytics-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.analytics-detail-chart {
+  padding-block: 16px;
+  min-width: 0;
+  border-bottom: 1px solid var(--analytics-line);
+}
+.analytics-detail-content .text-3xl .analytics-metric-unit {
+  font-size: 0.55em;
+}
+.analytics-detail-content .analytics-stat-grid,
+.analytics-detail-content .analytics-queue-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+}
+.analytics-stat-grid > div,
+.analytics-queue-stats > div {
+  min-width: 0;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--analytics-line);
+}
+.analytics-queue-stats > div > p:first-child {
+  min-height: 34px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.analytics-queue-stats > div > p:nth-child(2) {
+  font-size: 30px;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+  margin-top: 4px;
+}
+.analytics-detail-content .analytics-retention {
+  grid-template-columns: 1fr;
+  border: 0;
+  padding: 0;
+  gap: 20px;
+}
+.analytics-detail-content .analytics-retention-intro h2 {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  margin-top: 10px;
+}
+.analytics-detail-content .analytics-retention-intro > p {
+  max-width: 60ch;
+  font-size: 13px;
+}
+.analytics-detail-content .analytics-retention-summary {
+  padding: 20px 0;
+  border-block: 1px solid var(--analytics-line);
+}
+.analytics-table-secondary {
+  display: block;
+  margin-top: 5px;
+  color: var(--analytics-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.analytics-plan-table,
+.analytics-ledger-table,
+.analytics-steps-table,
+.analytics-breakdown-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.analytics-plan-table th:first-child {
+  width: 38%;
+}
+.analytics-plan-table th:last-child {
+  width: 17%;
+}
+.analytics-ledger-table th:first-child {
+  width: 42%;
+}
+.analytics-ledger-table th:nth-child(2) {
+  width: 15%;
+}
+.analytics-ledger-table .analytics-metric-unit {
+  font-size: 0.72em;
+}
+.analytics-steps-table th:first-child {
+  width: 60%;
+}
+.analytics-breakdown-table th:first-child {
+  width: 50%;
+}
+.analytics-detail-content .analytics-steps-table th,
+.analytics-detail-content .analytics-steps-table td {
+  padding-inline: 8px;
+}
+.analytics-detail-content .analytics-steps-table th:first-child,
+.analytics-detail-content .analytics-steps-table td:first-child {
+  padding-left: 0;
+}
+.analytics-detail-content .analytics-steps-table th:last-child,
+.analytics-detail-content .analytics-steps-table td:last-child {
+  padding-right: 0;
+}
+.analytics-plan-table td,
+.analytics-ledger-table td,
+.analytics-steps-table td,
+.analytics-breakdown-table td {
+  overflow-wrap: anywhere;
+}
+.analytics-breakdown-table td:first-child {
+  font-size: 12px;
+}
+.analytics-diagnostic-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.analytics-diagnostic-controls [role='group'] {
+  border-radius: 8px;
+  padding: 2px;
+  border: 1px solid var(--analytics-line);
+  box-shadow: none;
+}
+.analytics-diagnostic-controls [role='group'] button {
+  min-height: 36px;
+  padding-inline: 10px;
+  font-size: 12px;
+  border-radius: 5px;
+}
+.analytics-diagnostic-controls > button {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0;
+  gap: 0;
+  border-radius: 8px;
+}
+.analytics-diagnostic-controls > button .refresh-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.analytics-diagnostic-summary {
+  border-block: 1px solid var(--analytics-line);
+  padding-block: 16px;
+}
+.analytics-diagnostic-total {
+  font-size: 12px;
+  color: var(--analytics-muted);
+}
+.analytics-diagnostic-total strong {
+  display: block;
+  font-size: 32px;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--analytics-ink);
+  font-variant-numeric: tabular-nums;
+}
+.analytics-diagnostic-summary > p:last-child {
+  font-size: 12px;
+  line-height: 1.65;
+}
+@media (max-width: 520px) {
+  .analytics-drawer-surface > header h2 {
+    font-size: 18px;
+  }
+  .analytics-plan-table,
+  .analytics-ledger-table,
+  .analytics-steps-table {
+    font-size: 12px;
+  }
+  .analytics-stat-grid .text-3xl {
+    font-size: 28px;
+  }
+  .analytics-stat-grid h3 {
+    min-height: 32px;
+  }
+  .analytics-detail-content .analytics-stat-grid {
+    gap: 8px 20px;
+  }
+  .analytics-detail-content .analytics-retention-summary {
+    gap: 20px;
+  }
+  .analytics-detail-content .analytics-cohort-bars {
+    width: 100%;
+  }
+}
 @media (max-width: 700px) {
   .analytics-plan-summary {
     grid-template-columns: minmax(0, 1fr);

@@ -497,7 +497,7 @@ func loadQueueRows(ctx context.Context, limit int, autosend AutoSendState, now t
 		sql = queueSQLUncapped
 		args = args[:1]
 	}
-	rows, err := platform.DBPool.Query(ctx, sql, args...)
+	rows, err := summaryQuery(ctx, sql, args...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -589,7 +589,7 @@ var queueSQLUncapped = strings.Replace(queueSQL, "LIMIT $2", "", 1)
 // empty paying section looks like a broken query.
 func queueAccounts(ctx context.Context) AdminQueueAccounts {
 	var a AdminQueueAccounts
-	if err := platform.DBPool.QueryRow(ctx, `
+	if err := summaryQueryRow(ctx, `
 		SELECT (SELECT count(*) FROM stripe_customers s WHERE `+billing.PayingWhere+`),
 		       (SELECT count(*) FROM support_cases
 		         WHERE logto_sub IS NOT NULL AND logto_sub <> '' AND account_source = 'authenticated' AND opened_at >= $1),

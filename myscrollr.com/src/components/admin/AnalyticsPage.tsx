@@ -1,5 +1,5 @@
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useCallback, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { SignupTrend } from './SignupTrend'
 import { AnalyticsTrend } from './AnalyticsTrend'
 import { ReportBoundary } from './ReportBoundary'
@@ -151,6 +151,8 @@ function AnalyticsWorkspace() {
   const navigate = useNavigate({ from: '/admin/analytics' })
   const [refresh, setRefresh] = useState(0)
   const { os, period, plan, version, view } = search
+  const populationKey = `${period}:${os ?? ''}:${version ?? ''}:${plan ?? ''}`
+  const filtered = Boolean(os || version || plan)
 
   const setSearch = (patch: Partial<typeof search>) =>
     navigate({
@@ -162,11 +164,11 @@ function AnalyticsWorkspace() {
   const audience = useReport(
     useCallback(
       (signal: AbortSignal) => {
-        return loadAudience(getToken, period, signal)
+        return loadAudience(getToken, period, signal, { os, version, plan })
       },
-      [getToken, period],
+      [getToken, os, period, plan, version],
     ),
-    period,
+    populationKey,
     60_000,
   )
   const website = useReport(
@@ -189,33 +191,43 @@ function AnalyticsWorkspace() {
     `${period}:${os ?? ''}:${version ?? ''}:${plan ?? ''}`,
     60_000,
   )
+  const [filterOptions, setFilterOptions] = useState<DesktopUsage | null>(null)
+  useEffect(() => {
+    if (desktop.data) setFilterOptions(desktop.data)
+  }, [desktop.data])
   const revenue = useReport(
     useCallback(
       (signal: AbortSignal) => {
-        return loadRevenue(getToken, period, signal)
+        return loadRevenue(getToken, period, signal, { os, version, plan })
       },
-      [getToken, period],
+      [getToken, os, period, plan, version],
     ),
-    period,
+    populationKey,
     60_000,
   )
   const support = useReport(
     useCallback(
       (signal: AbortSignal) => {
-        return loadSupportSummary(getToken, period, signal)
+        return loadSupportSummary(getToken, period, signal, {
+          os,
+          version,
+          plan,
+        })
       },
-      [getToken, period],
+      [getToken, os, period, plan, version],
     ),
-    period,
+    populationKey,
     60_000,
   )
   const week1Return = useReport(
     useCallback(
       (signal: AbortSignal) => {
-        return loadWeek1Return(getToken, signal)
+        return loadWeek1Return(getToken, signal, { os, version, plan })
       },
-      [getToken],
+      [getToken, os, version, plan],
     ),
+    `${os ?? ''}:${version ?? ''}:${plan ?? ''}`,
+    60_000,
   )
 
   const sectionVerdicts: Record<AnalyticsView, Verdict> = {
@@ -240,38 +252,33 @@ function AnalyticsWorkspace() {
             period={period}
             verdicts={sectionVerdicts}
             populationControls={
-              <div
-                hidden={view !== 'desktop'}
-                className="analytics-population-controls"
-              >
+              <div className="analytics-population-controls">
                 <DesktopFilters
-                  data={desktop.data}
+                  data={desktop.data ?? filterOptions}
                   filters={{ os, version, plan }}
                   onChange={(next) => void setSearch(next)}
                 />
               </div>
             }
             mobilePopulationControls={
-              view === 'desktop' ? (
-                <details
-                  className="analytics-mobile-filters"
-                  onKeyDown={(event) => {
-                    if (event.key === 'Escape') {
-                      event.currentTarget.open = false
-                      event.currentTarget.querySelector('summary')?.focus()
-                    }
-                  }}
-                >
-                  <summary>Filters{os || version || plan ? ' •' : ''}</summary>
-                  <div className="analytics-mobile-filter-panel">
-                    <DesktopFilters
-                      data={desktop.data}
-                      filters={{ os, version, plan }}
-                      onChange={(next) => void setSearch(next)}
-                    />
-                  </div>
-                </details>
-              ) : null
+              <details
+                className="analytics-mobile-filters"
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.currentTarget.open = false
+                    event.currentTarget.querySelector('summary')?.focus()
+                  }
+                }}
+              >
+                <summary>Filters{os || version || plan ? ' •' : ''}</summary>
+                <div className="analytics-mobile-filter-panel">
+                  <DesktopFilters
+                    data={desktop.data ?? filterOptions}
+                    filters={{ os, version, plan }}
+                    onChange={(next) => void setSearch(next)}
+                  />
+                </div>
+              </details>
             }
             refreshing={
               view === 'growth'
@@ -318,7 +325,17 @@ function AnalyticsWorkspace() {
                 period={period}
                 verdict={sectionVerdicts.growth}
                 audience={audience}
-                website={website}
+                website={
+                  filtered
+                    ? {
+                        ...website,
+                        data: null,
+                        loading: false,
+                        error:
+                          'Website visits are anonymous and cannot be linked to this account population. Clear filters to inspect website acquisition.',
+                      }
+                    : website
+                }
                 desktop={desktop}
                 investigations={
                   <>
@@ -1051,7 +1068,11 @@ export function GrowthContent(props: GrowthContentProps) {
                             },
                             {
                               label: 'Known deleted accounts',
-                              value: num(a.known_purged),
+                              value:
+                                a.population &&
+                                Object.values(a.population).some(Boolean)
+                                  ? null
+                                  : num(a.known_purged),
                             },
                           ]}
                         />
@@ -1168,7 +1189,13 @@ function GrowthOverview({
       label: 'Signed up on the website',
       value: w && w.available ? factOf(w.signups) : null,
     },
-    { label: 'Deleted their account', value: num(a.known_purged) },
+    {
+      label: 'Deleted their account',
+      value:
+        a.population && Object.values(a.population).some(Boolean)
+          ? null
+          : num(a.known_purged),
+    },
   ]
 
   return (
@@ -1180,7 +1207,7 @@ function GrowthOverview({
       sentence={sentence}
       chart={<SignupTrend buckets={a.new_curve} step={a.curve_step} />}
       facts={facts}
-      note={GROWTH_NOTE}
+      note={[GROWTH_NOTE, a.definition].filter(Boolean).join(' ')}
       updatedAt={a.generated_at}
     />
   )
@@ -1253,6 +1280,23 @@ function OpenedSignupDiagnostics({
     `${application}:${signupDays(period)}:${refresh}`,
     5 * 60_000,
   )
+  const retryRef = useRef(signup.retry)
+  retryRef.current = signup.retry
+  const pollStarted = useRef(0)
+  const [pollExpired, setPollExpired] = useState(false)
+  useEffect(() => {
+    pollStarted.current = Date.now()
+    setPollExpired(false)
+  }, [application, period, refresh])
+  useEffect(() => {
+    if (!signup.data?.refreshing || signup.loading) return
+    if (Date.now() - pollStarted.current > 45_000) {
+      setPollExpired(true)
+      return
+    }
+    const timer = window.setTimeout(() => retryRef.current(), 2_000)
+    return () => window.clearTimeout(timer)
+  }, [signup.data, signup.loading])
   return (
     <ReportBoundary
       label="Signup diagnostics"
@@ -1262,7 +1306,23 @@ function OpenedSignupDiagnostics({
       <SignupDiagnostics
         open
         period={period}
-        signup={signup}
+        signup={{
+          ...signup,
+          retry: () => {
+            pollStarted.current = Date.now()
+            setPollExpired(false)
+            signup.retry()
+          },
+          data:
+            signup.data && pollExpired
+              ? {
+                  ...signup.data,
+                  refreshing: false,
+                  reason:
+                    'The first scan is still being prepared. Retry to check for its result.',
+                }
+              : signup.data,
+        }}
         application={application}
         onApplicationChange={onApplicationChange}
         embedded={embedded}
@@ -1299,7 +1359,9 @@ export function SignupDiagnostics({
     >
       <p className="text-sm text-base-content/60">
         Troubleshooting data: registration events and safe error categories.
-        Counts are events, not people or completed signups.
+        Counts are events, not people or completed signups. These pre-account
+        logs cover the selected application; OS, version and plan filters do not
+        apply.
       </p>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Selector
@@ -1318,7 +1380,19 @@ export function SignupDiagnostics({
       </div>
       {signup && (
         <Loaded report={signup} label="signup diagnostics">
-          {(s) => <SignupBlock signup={s} />}
+          {(s) => (
+            <>
+              {s.stale && (
+                <p role="status" className="mb-3 text-xs text-base-content/60">
+                  Showing the last successful read <Stamp at={s.generated_at} />
+                  {s.refreshing
+                    ? ' · Updating in the background'
+                    : ' · Latest refresh unavailable; retry to check again'}
+                </p>
+              )}
+              <SignupBlock signup={s} />
+            </>
+          )}
         </Loaded>
       )}
     </div>
@@ -1491,6 +1565,13 @@ function WebsiteBlock({
 }
 
 function SignupBlock({ signup }: { signup: SignupAnalytics }) {
+  if (!signup.available && signup.refreshing)
+    return (
+      <p role="status" className="py-6 text-sm text-base-content/60">
+        Preparing signup health… Results appear here automatically. You can keep
+        using Analytics.
+      </p>
+    )
   if (!signup.available) {
     return (
       <Unmeasurable
@@ -1904,7 +1985,11 @@ export function DesktopContent({
                   <Section
                     id="retention"
                     title="Do people return?"
-                    lede="All mature cohorts · independent of time, OS, version and plan filters."
+                    lede={
+                      d.population
+                        ? 'Mature cohorts in the selected population · independent of the chart time window.'
+                        : 'All mature cohorts · independent of time, OS, version and plan filters.'
+                    }
                   >
                     <FactList
                       facts={[
@@ -2207,7 +2292,7 @@ export function RevenueContent({
 
   const facts: Array<Fact> = [
     {
-      label: `Earned ${periodPhrase(period)}, after Stripe fees`,
+      label: `${r.population && Object.values(r.population).some(Boolean) ? 'Attributed net' : 'Earned'} ${periodPhrase(period)}, after Stripe fees`,
       value: factOf(r.earnings.net, money),
     },
     ...previousFact(period, r.earnings.net, money),
@@ -2256,7 +2341,9 @@ export function RevenueContent({
         />
       }
       facts={facts}
-      note={[REVENUE_NOTE, r.account_note].filter(Boolean).join(' ')}
+      note={[REVENUE_NOTE, r.account_note, r.earnings.note]
+        .filter(Boolean)
+        .join(' ')}
       updatedAt={r.generated_at}
     >
       <MoreDetail title="Revenue details">
@@ -2689,7 +2776,9 @@ export function SupportContent({
         />
       }
       facts={facts}
-      note={[s.paying_note, SUPPORT_NOTE].filter(Boolean).join(' ')}
+      note={[s.paying_note, SUPPORT_NOTE, s.definitions?.population]
+        .filter(Boolean)
+        .join(' ')}
       updatedAt={s.generated_at}
     >
       <div className="analytics-support-explore">

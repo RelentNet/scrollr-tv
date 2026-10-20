@@ -98,6 +98,45 @@ async function mount() {
 }
 
 describe('Analytics report isolation', () => {
+  it('keeps population controls on every tab and passes all dimensions to account reports', async () => {
+    const host = await mount()
+    const select = host.querySelector<HTMLSelectElement>(
+      '.analytics-population-controls select[name="os"]',
+    )!
+    await act(() => {
+      select.value = 'windows'
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    for (const load of [
+      reports.loadAudience,
+      reports.loadRevenue,
+      reports.loadSupportSummary,
+    ]) {
+      expect(load).toHaveBeenLastCalledWith(
+        expect.any(Function),
+        '7d',
+        expect.any(AbortSignal),
+        { os: 'windows', version: undefined, plan: undefined },
+      )
+    }
+    expect(analytics.loadWeek1Return).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      expect.any(AbortSignal),
+      { os: 'windows', version: undefined, plan: undefined },
+    )
+    for (const label of ['Revenue', 'Support', 'Desktop usage', 'Growth']) {
+      const button = Array.from(host.querySelectorAll('nav button')).find(
+        (b) => b.textContent === label,
+      ) as HTMLButtonElement
+      await act(() => button.click())
+      expect(select.closest('[hidden]')).toBeNull()
+      expect(select.value).toBe('windows')
+    }
+    // View changes reuse reports for the selected population.
+    expect(reports.loadRevenue).toHaveBeenCalledTimes(2)
+    expect(reports.loadWebsite).toHaveBeenCalledTimes(1)
+  })
+
   it('defaults to desktop and restores its cached result while ignoring a superseded website scan', async () => {
     let finishWebsite!: (value: analytics.SignupAnalytics) => void
     vi.mocked(analytics.loadSignupAnalytics)

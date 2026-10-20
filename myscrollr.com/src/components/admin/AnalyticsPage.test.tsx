@@ -219,7 +219,7 @@ describe('GrowthContent', () => {
     expect(html).toContain('Accounts in total')
     expect(html).toContain('Never finished setting up')
     expect(html).toContain('>83<')
-    expect(html).toContain('Deleted their account')
+    expect(html).toContain('Known deleted accounts')
   })
 
   it('reads sign-up source from applicationId without duplicating legacy retention', async () => {
@@ -278,7 +278,7 @@ describe('GrowthContent', () => {
     expect(html).toContain('<dialog')
     expect(html).not.toContain('<dialog open')
     expect(html).not.toContain('<details open')
-    expect(html).toContain('Registered users')
+    expect(html).toContain('From signup to setup')
     expect(html).toContain('>183<')
     expect(html).toContain('Lifetime registrations')
     expect(html).toContain('Known deleted accounts')
@@ -463,11 +463,17 @@ describe('DesktopContent', () => {
   it('lists its facts from presence, peak, retention and widgets', async () => {
     const html = await render()
     expect(html).toContain('People who ran the app')
-    expect(html).toContain('Hours the app was open, everyone added up')
+    expect(html).toContain('App hours · all users')
     expect(html).toContain('Peak simultaneous users')
     // 2+ screens bucket, day-1 retention, and the widget with most hours.
     expect(html).toContain('Using two or more monitors')
     expect(html).toContain('Came back the next day')
+    expect(html).toContain(
+      'All mature cohorts · independent of time, OS, version and plan filters.',
+    )
+    expect(html.split('Usage details')[0]).not.toContain(
+      'Came back the next day',
+    )
     expect(html).toContain('12 of 20')
     expect(html).toContain('What stays on screen')
     expect(html).toContain('NFL')

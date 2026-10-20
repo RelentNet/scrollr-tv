@@ -113,13 +113,10 @@ describe('Analytics report isolation', () => {
       )
     const host = await mount()
     expect(analytics.loadSignupAnalytics).not.toHaveBeenCalled()
-    const disclosure = Array.from(host.querySelectorAll('details')).find((el) =>
-      el.querySelector('summary')?.textContent.includes('Signup diagnostics'),
-    )!
-    await act(() => {
-      disclosure.open = true
-      disclosure.dispatchEvent(new Event('toggle'))
-    })
+    const health = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+    ).find((el) => el.textContent === 'Signup health')!
+    await act(() => health.click())
     expect(analytics.loadSignupAnalytics).toHaveBeenLastCalledWith(
       expect.any(Function),
       'desktop',
@@ -182,13 +179,10 @@ describe('Analytics report isolation', () => {
           }),
       )
     const host = await mount()
-    const disclosure = Array.from(host.querySelectorAll('details')).find((el) =>
-      el.querySelector('summary')?.textContent.includes('Signup diagnostics'),
-    )!
-    await act(() => {
-      disclosure.open = true
-      disclosure.dispatchEvent(new Event('toggle'))
-    })
+    const health = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+    ).find((el) => el.textContent === 'Signup health')!
+    await act(() => health.click())
     expect(host.textContent).toContain('Seven-day signup result')
     const period = Array.from(
       host.querySelectorAll('[aria-label="Time window"] button'),

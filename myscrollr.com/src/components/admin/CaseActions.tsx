@@ -29,7 +29,7 @@ import { useGetToken } from '@/hooks/useGetToken'
  * the ticket history but settles the draft without sending an email.
  */
 
-type Panel = 'none' | 'confirm-send' | 'confirm-dismiss' | 'ask' | 'link'
+type Panel = 'none' | 'confirm-send' | 'ask' | 'link'
 
 export type CaseEdits = { body: string; question: string; issueKey: string }
 
@@ -161,7 +161,7 @@ export default function CaseActions({
         <p className="rounded-xl bg-base-200/40 px-4 py-3 text-sm text-base-content/60 ring-1 ring-base-300/60">
           {draft
             ? `This draft is ${draft.status}, so there is nothing left to send on it. The issue link below is still yours to change.`
-            : 'No pending reply. You can dismiss this ticket if it does not need attention.'}
+            : 'No reply is waiting for approval.'}
         </p>
       )}
 
@@ -257,65 +257,6 @@ export default function CaseActions({
               setError(null)
             }}
           />
-        </div>
-      )}
-
-      <div className="mt-3">
-        <ActionButton
-          label={dismissed ? 'Restore ticket' : 'Dismiss ticket'}
-          icon={<SkipForward size={14} />}
-          busy={busy === 'dismiss' || busy === 'restore'}
-          disabled={busy !== null}
-          onClick={() =>
-            dismissed
-              ? run('restore', () =>
-                  adminApi.restoreCase(getToken, detail.ticket_number),
-                )
-              : setPanel('confirm-dismiss')
-          }
-        />
-        {dismissed && (
-          <p className="mt-2 text-sm text-base-content/60">
-            Bot replies are stopped for this ticket, including new messages.
-            Restore it to review again. The original email and history are kept.
-          </p>
-        )}
-      </div>
-      {panel === 'confirm-dismiss' && !dismissed && (
-        <div
-          role="group"
-          aria-label="Dismiss without replying"
-          className="mt-3 space-y-3 rounded-xl p-4 ring-1 ring-base-300/60"
-        >
-          <h3 className="font-semibold">No reply needed?</h3>
-          <p className="text-sm text-base-content/65">
-            Move this ticket to Resolved without emailing anyone. Stop pending
-            and future bot replies until you restore it. The original email and
-            conversation stay in history; osTicket is unchanged.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <ActionButton
-              label="Dismiss without replying"
-              icon={<SkipForward size={14} />}
-              busy={busy === 'dismiss'}
-              disabled={busy !== null}
-              onClick={() =>
-                run(
-                  'dismiss',
-                  () => adminApi.dismissCase(getToken, detail.ticket_number),
-                  () => setPanel('none'),
-                )
-              }
-            />
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => setPanel('none')}
-              className="min-h-11 cursor-pointer rounded-lg px-3 text-sm hover:bg-base-200/60"
-            >
-              Cancel
-            </button>
-          </div>
         </div>
       )}
 
@@ -600,4 +541,105 @@ function describeFiling(filed: FiledBug): string {
     return `Filed ${filed.issue_key} (${filed.url}), but the link back to this ticket did not save. Filing again would create a duplicate — link ${filed.issue_key} by hand instead.`
   }
   return `Filed as ${filed.issue_key} — ${filed.url}`
+}
+
+/** Ticket-level action stays above the conversation, including cases with no draft. */
+export function CaseDisposition({
+  detail,
+  onCase,
+}: {
+  detail: CaseDetail
+  onCase: (next: CaseDetail) => void
+}) {
+  const getToken = useGetToken()
+  const dismissed = detail.console_status === 'dismissed'
+  const [panel, setPanel] = useState<'none' | 'confirm-dismiss'>('none')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const run = async (
+    name: string,
+    call: () => Promise<CaseDetail>,
+    after?: () => void,
+  ) => {
+    setBusy(name)
+    setError(null)
+    try {
+      onCase(await call())
+      after?.()
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Could not update the ticket.',
+      )
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <div className="support-ticket-actions">
+      <div className="mt-3">
+        <ActionButton
+          label={dismissed ? 'Restore ticket' : 'Dismiss ticket'}
+          icon={<SkipForward size={14} />}
+          busy={busy === 'dismiss' || busy === 'restore'}
+          disabled={busy !== null}
+          onClick={() =>
+            dismissed
+              ? run('restore', () =>
+                  adminApi.restoreCase(getToken, detail.ticket_number),
+                )
+              : setPanel('confirm-dismiss')
+          }
+        />
+        {dismissed && (
+          <p className="mt-2 text-sm text-base-content/60">
+            Bot replies are stopped for this ticket, including new messages.
+            Restore it to review again. The original email and history are kept.
+          </p>
+        )}
+      </div>
+      {panel === 'confirm-dismiss' && !dismissed && (
+        <div
+          role="group"
+          aria-label="Dismiss without replying"
+          className="mt-3 space-y-3 rounded-xl p-4 ring-1 ring-base-300/60"
+        >
+          <h3 className="font-semibold">No reply needed?</h3>
+          <p className="text-sm text-base-content/65">
+            Move this ticket to Resolved without emailing anyone. Stop pending
+            and future bot replies until you restore it. The original email and
+            conversation stay in history; osTicket is unchanged.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <ActionButton
+              label="Dismiss without replying"
+              icon={<SkipForward size={14} />}
+              busy={busy === 'dismiss'}
+              disabled={busy !== null}
+              onClick={() =>
+                run(
+                  'dismiss',
+                  () => adminApi.dismissCase(getToken, detail.ticket_number),
+                  () => setPanel('none'),
+                )
+              }
+            />
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => setPanel('none')}
+              className="min-h-11 cursor-pointer rounded-lg px-3 text-sm hover:bg-base-200/60"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-error">
+          {error}
+        </p>
+      )}
+    </div>
+  )
 }

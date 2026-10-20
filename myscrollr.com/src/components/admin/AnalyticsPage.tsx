@@ -1,10 +1,11 @@
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useCallback, useState } from 'react'
+import { useCallback, useId, useState } from 'react'
 import { SignupTrend } from './SignupTrend'
 import { AnalyticsTrend } from './AnalyticsTrend'
 import { ReportBoundary } from './ReportBoundary'
 import { AnalyticsDetails } from './AnalyticsDetails'
 import { AnalyticsStage } from './AnalyticsStage'
+import { AnalyticsPanels } from './AnalyticsPanels'
 import './analytics.css'
 import {
   Bars,
@@ -250,6 +251,28 @@ function AnalyticsWorkspace() {
                 />
               </div>
             }
+            mobilePopulationControls={
+              view === 'desktop' ? (
+                <details
+                  className="analytics-mobile-filters"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      event.currentTarget.open = false
+                      event.currentTarget.querySelector('summary')?.focus()
+                    }
+                  }}
+                >
+                  <summary>Filters{os || version || plan ? ' •' : ''}</summary>
+                  <div className="analytics-mobile-filter-panel">
+                    <DesktopFilters
+                      data={desktop.data}
+                      filters={{ os, version, plan }}
+                      onChange={(next) => void setSearch(next)}
+                    />
+                  </div>
+                </details>
+              ) : null
+            }
             refreshing={
               view === 'growth'
                 ? [audience, website, desktop, week1Return].some(
@@ -306,11 +329,14 @@ function AnalyticsWorkspace() {
                     >
                       <Week1ReturnContent report={week1Return} />
                     </ReportBoundary>
-                    <SignupDiagnosticsSection
-                      period={period}
-                      refresh={refresh}
-                    />
                   </>
+                }
+                diagnostics={
+                  <SignupDiagnosticsSection
+                    period={period}
+                    refresh={refresh}
+                    expanded
+                  />
                 }
               />
             </ReportBoundary>
@@ -531,6 +557,7 @@ export function SectionNav({
   onRefresh,
   refreshing = false,
   populationControls,
+  mobilePopulationControls,
 }: {
   view: AnalyticsView
   period: Period
@@ -540,6 +567,7 @@ export function SectionNav({
   onRefresh?: () => void
   refreshing?: boolean
   populationControls?: ReactNode
+  mobilePopulationControls?: ReactNode
 }) {
   return (
     <nav aria-label="Analytics sections" className="analytics-nav">
@@ -570,8 +598,22 @@ export function SectionNav({
       </div>
       <div className="analytics-nav-controls">
         <div className="analytics-control-scroll">
-          <PeriodSelector value={period} onChange={onPeriod} />
+          <div className="analytics-period-buttons">
+            <PeriodSelector value={period} onChange={onPeriod} />
+          </div>
+          <select
+            className="analytics-mobile-period"
+            aria-label="Time window"
+            value={period}
+            onChange={(event) => onPeriod(event.target.value as Period)}
+          >
+            <option value="24h">Last 24 hours</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="lifetime">Lifetime</option>
+          </select>
           {populationControls}
+          {mobilePopulationControls}
         </div>
         {onRefresh && (
           <RefreshButton
@@ -673,10 +715,9 @@ function Question({
   chart,
   facts,
   note,
+  updatedAt,
   children,
-  factGroups,
   toolbar,
-  visual,
 }: {
   id: AnalyticsView
   title: string
@@ -685,10 +726,9 @@ function Question({
   sentence: ReactNode
   chart: ReactNode
   facts: Array<Fact>
-  factGroups?: Array<{ title: string; facts: Array<Fact> }>
   note: string
+  updatedAt?: string
   toolbar?: ReactNode
-  visual?: ReactNode
   children?: ReactNode
 }) {
   return (
@@ -699,31 +739,9 @@ function Question({
       verdict={verdict}
       info={
         <AnalyticsDetails compact title={`${title}: measurements`}>
-          {visual}
-          <div>
-            {factGroups ? (
-              <div className="analytics-fact-groups">
-                {factGroups.map((group) => {
-                  const remaining = group.facts.filter(
-                    (fact) =>
-                      !facts
-                        .slice(0, 3)
-                        .some((main) => main.label === fact.label),
-                  )
-                  return remaining.length ? (
-                    <div key={group.title}>
-                      <h3>{group.title}</h3>
-                      <FactList facts={remaining} />
-                    </div>
-                  ) : null
-                })}
-              </div>
-            ) : (
-              <FactList facts={facts.slice(3)} />
-            )}
-          </div>
           <section>
             <p className="analytics-method">{note}</p>
+            {updatedAt && <Stamp at={updatedAt} />}
           </section>
         </AnalyticsDetails>
       }
@@ -746,11 +764,21 @@ function Question({
               </div>
             ))}
           </dl>
-          <p className="analytics-answer">{sentence}</p>
+          <p className="sr-only">{sentence}</p>
         </div>
         <div className="analytics-chart">{chart}</div>
       </div>
 
+      {facts.length > 3 && (
+        <dl className="analytics-signals">
+          {facts.slice(3, 6).map((fact) => (
+            <div key={fact.label}>
+              <dt>{fact.label}</dt>
+              <dd>{fact.value ?? 'unknown'}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {children}
     </QuestionShell>
   )
@@ -784,6 +812,9 @@ function QuestionShell({
           <span>{question}</span>
         </h2>
         <div className="analytics-heading-actions">
+          {id === 'desktop' && (
+            <span className="analytics-verdict-context">App hours</span>
+          )}
           <VerdictPill verdict={verdict} />
           {info}
         </div>
@@ -958,6 +989,7 @@ export interface GrowthContentProps {
   website: Report<Website>
   desktop: Report<DesktopUsage>
   investigations?: ReactNode
+  diagnostics?: ReactNode
 }
 
 const GROWTH_QUESTION = 'Are new people showing up, and do they stick?'
@@ -971,89 +1003,112 @@ const GROWTH_NOTE =
   'Sign-ups are counted from Logto. Each report states whether staff are excluded. "Finished setting up" means the account saved at least one widget. "Signed up from the desktop app" is the Logto application the account registered through; accounts with none recorded are neither. Sign-ups on the website are PostHog events on the site, a different count from Logto accounts.'
 
 export function GrowthContent(props: GrowthContentProps) {
-  const { audience, website, period, investigations } = props
-  const windowLabel = periodLabel(period)
-  const staffExcluded = [audience, website].some((r) => r.data?.staff_excluded)
+  const { audience, website, period, investigations, diagnostics } = props
   return (
     <>
       <GrowthOverview {...props} />
       <MoreDetail title="Acquisition details">
-        <Loaded report={audience} label="registered accounts">
-          {(a) =>
-            a.available ? (
-              <>
-                {staffExcluded && <StaffExcludedBadge />}
-                <Section
-                  id="accounts"
-                  title="Registered users"
-                  lede="Logto is the system of record. Authentication is not app usage."
-                >
-                  <div className="space-y-3">
-                    <Stamp at={a.generated_at} />
-                    <FactList
-                      facts={[
-                        {
-                          label: 'Registered accounts today',
-                          value: num(a.total),
-                        },
-                        {
-                          label: 'Finished setting up the app',
-                          value: num(a.set_up),
-                        },
-                        {
-                          label: `New accounts ${periodPhrase(period)}`,
-                          value: factOf(a.new),
-                        },
-                        {
-                          label: `Signed in ${periodPhrase(period)}`,
-                          value: factOf(a.signed_in_in_period),
-                        },
-                        {
-                          label: 'Lifetime registrations',
-                          value: num(a.lifetime_registrations),
-                        },
-                        {
-                          label: 'Known deleted accounts',
-                          value: num(a.known_purged),
-                        },
-                      ]}
-                    />
-                    <CoverageNote coverage={a.coverage} />
-                    <DefinitionDisclosure>
-                      <p>{a.definition}</p>
-                      <p>
-                        Sign-ins measure authentication, not usage. A running
-                        app with a valid token does not need to sign in again.
-                      </p>
-                      <p>
-                        New accounts:{' '}
-                        <DeltaBadge comparison={a.new.comparison} />
-                      </p>
-                    </DefinitionDisclosure>
-                  </div>
-                </Section>
-
-                <Section
-                  id="website"
-                  title="Website"
-                  lede="PostHog pageviews. A visitor is a browser profile merged on sign-in, not guaranteed to be one human."
-                >
+        <AnalyticsPanels
+          panels={[
+            {
+              label: 'Accounts',
+              content: (
+                <Loaded report={audience} label="registered accounts">
+                  {(a) =>
+                    a.available ? (
+                      <Section id="accounts" title="From signup to setup">
+                        <FactList
+                          facts={[
+                            {
+                              label: 'Registered accounts today',
+                              value: num(a.total),
+                            },
+                            {
+                              label: 'Finished setting up the app',
+                              value: num(a.set_up),
+                            },
+                            {
+                              label: 'Never finished setting up',
+                              value: num(Math.max(a.total - a.set_up, 0)),
+                            },
+                            {
+                              label: `New accounts ${periodPhrase(period)}`,
+                              value: factOf(a.new),
+                            },
+                            {
+                              label: 'Signed up from the desktop app',
+                              value: a.signup_source.available
+                                ? num(a.signup_source.desktop)
+                                : null,
+                            },
+                            {
+                              label: `Signed in ${periodPhrase(period)}`,
+                              value: factOf(a.signed_in_in_period),
+                            },
+                            {
+                              label: 'Lifetime registrations',
+                              value: num(a.lifetime_registrations),
+                            },
+                            {
+                              label: 'Known deleted accounts',
+                              value: num(a.known_purged),
+                            },
+                          ]}
+                        />
+                        <DefinitionDisclosure summary="Sources and counting rules">
+                          <p>{GROWTH_NOTE}</p>
+                          <p>{a.definition}</p>
+                          <DeltaBadge comparison={a.new.comparison} />
+                          <CoverageNote coverage={a.coverage} />
+                          <p>
+                            Sign-ins measure authentication, not usage. A
+                            running app with a valid token does not need to sign
+                            in again.
+                          </p>
+                          {a.staff_excluded && <StaffExcludedBadge />}
+                        </DefinitionDisclosure>
+                        <Stamp at={a.generated_at} />
+                      </Section>
+                    ) : (
+                      <Unmeasurable note={a.note ?? GROWTH_NOTE} />
+                    )
+                  }
+                </Loaded>
+              ),
+            },
+            {
+              label: 'Website',
+              content: (
+                <Section id="website" title="Website acquisition">
+                  <FactList
+                    facts={[
+                      {
+                        label: 'Signed up on the website',
+                        value: website.data?.available
+                          ? factOf(website.data.signups)
+                          : null,
+                      },
+                    ]}
+                  />
                   <Loaded report={website} label="website analytics">
-                    {(loadedWebsite) => (
+                    {(w) => (
                       <WebsiteBlock
-                        website={loadedWebsite}
-                        windowLabel={windowLabel}
+                        website={w}
+                        windowLabel={periodLabel(period)}
                       />
                     )}
                   </Loaded>
                 </Section>
-              </>
-            ) : (
-              <Unmeasurable note={a.note ?? GROWTH_NOTE} />
-            )
-          }
-        </Loaded>
-        {investigations}
+              ),
+            },
+            ...(investigations
+              ? [{ label: 'Return visits', content: investigations }]
+              : []),
+            ...(diagnostics
+              ? [{ label: 'Signup health', content: diagnostics, lazy: true }]
+              : []),
+          ]}
+        />
       </MoreDetail>
     </>
   )
@@ -1065,7 +1120,6 @@ function GrowthOverview({
   audience,
   website,
 }: GrowthContentProps) {
-  const windowLabel = periodLabel(period)
   const a = audience.data
   const w = website.data
 
@@ -1101,12 +1155,11 @@ function GrowthOverview({
     },
     ...previousFact(period, a.new),
     { label: 'Accounts in total', value: num(a.total) },
-    { label: 'Finished setting up', value: num(a.set_up) },
+    { label: 'Finished setting up · current accounts', value: num(a.set_up) },
     {
-      label: 'Never finished setting up',
+      label: 'Never finished setting up · current accounts',
       value: num(Math.max(a.total - a.set_up, 0)),
     },
-    { label: 'Deleted their account', value: num(a.known_purged) },
     {
       label: 'Signed up from the desktop app',
       value: a.signup_source.available ? num(a.signup_source.desktop) : null,
@@ -1115,6 +1168,7 @@ function GrowthOverview({
       label: 'Signed up on the website',
       value: w && w.available ? factOf(w.signups) : null,
     },
+    { label: 'Deleted their account', value: num(a.known_purged) },
   ]
 
   return (
@@ -1126,38 +1180,9 @@ function GrowthOverview({
       sentence={sentence}
       chart={<SignupTrend buckets={a.new_curve} step={a.curve_step} />}
       facts={facts}
-      factGroups={[
-        {
-          title: windowLabel,
-          facts: facts.filter(
-            (fact) =>
-              fact.label === `Signed up ${periodPhrase(period)}` ||
-              fact.label === previousFact(period, a.new)[0]?.label ||
-              fact.label === 'Signed up from the desktop app',
-          ),
-        },
-        {
-          title: 'Current account snapshot',
-          facts: facts.filter((fact) =>
-            [
-              'Accounts in total',
-              'Finished setting up',
-              'Never finished setting up',
-              'Deleted their account',
-            ].includes(fact.label),
-          ),
-        },
-        {
-          title: 'Separate measurements · different populations',
-          facts: facts.filter(
-            (fact) => fact.label === 'Signed up on the website',
-          ),
-        },
-      ]}
       note={GROWTH_NOTE}
-    >
-      <Stamp at={a.generated_at} />
-    </Question>
+      updatedAt={a.generated_at}
+    />
   )
 }
 
@@ -1170,11 +1195,13 @@ function GrowthOverview({
 export function SignupDiagnosticsSection({
   period,
   refresh = 0,
+  expanded = false,
 }: {
   period: Period
   refresh?: number
+  expanded?: boolean
 }) {
-  const [opened, setOpened] = useState(false)
+  const [opened, setOpened] = useState(expanded)
   const [application, setApplication] =
     useState<AnalyticsApplication>('desktop')
   return opened ? (
@@ -1183,6 +1210,7 @@ export function SignupDiagnosticsSection({
       refresh={refresh}
       application={application}
       onApplicationChange={setApplication}
+      embedded={expanded}
     />
   ) : (
     <SignupDiagnostics
@@ -1200,8 +1228,10 @@ function OpenedSignupDiagnostics({
   refresh,
   application,
   onApplicationChange,
+  embedded,
 }: {
   period: Period
+  embedded?: boolean
   refresh: number
   application: AnalyticsApplication
   onApplicationChange: (application: AnalyticsApplication) => void
@@ -1235,6 +1265,7 @@ function OpenedSignupDiagnostics({
         signup={signup}
         application={application}
         onApplicationChange={onApplicationChange}
+        embedded={embedded}
       />
     </ReportBoundary>
   )
@@ -1247,6 +1278,7 @@ export function SignupDiagnostics({
   onApplicationChange = () => {},
   open,
   onOpen,
+  embedded = false,
 }: {
   period: Period
   /** null until the disclosure has been opened: nothing is fetched before. */
@@ -1255,7 +1287,52 @@ export function SignupDiagnostics({
   onApplicationChange?: (application: AnalyticsApplication) => void
   open?: boolean
   onOpen?: () => void
+  embedded?: boolean
 }) {
+  const body = (
+    <div
+      className={
+        embedded
+          ? 'mt-5 space-y-4'
+          : 'space-y-3 border-t border-base-300/60 p-4'
+      }
+    >
+      <p className="text-sm text-base-content/60">
+        Troubleshooting data: registration events and safe error categories.
+        Counts are events, not people or completed signups.
+      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Selector
+          label="Application"
+          options={APPLICATIONS}
+          value={application}
+          onChange={onApplicationChange}
+        />
+        {signup?.retry && (
+          <RefreshButton
+            label="Refresh diagnostics"
+            onClick={signup.retry}
+            loading={signup.loading}
+          />
+        )}
+      </div>
+      {signup && (
+        <Loaded report={signup} label="signup diagnostics">
+          {(s) => <SignupBlock signup={s} />}
+        </Loaded>
+      )}
+    </div>
+  )
+  if (embedded)
+    return (
+      <section aria-label="Signup diagnostics">
+        <h3 className="text-lg font-semibold">Signup health</h3>
+        <p className="mt-1 text-xs text-base-content/60">
+          Authentication logs · last {signupDays(period)} days
+        </p>
+        {body}
+      </section>
+    )
   return (
     <details
       className="rounded-xl ring-1 ring-base-300/60"
@@ -1265,37 +1342,12 @@ export function SignupDiagnostics({
       }}
     >
       <summary className="cursor-pointer p-4 text-base font-semibold focus-visible:outline-2 focus-visible:outline-primary">
-        Signup diagnostics
+        Signup diagnostics{' '}
         <span className="ml-2 text-xs font-normal text-base-content/60">
           Troubleshoot registration · last {signupDays(period)} days
         </span>
       </summary>
-      <div className="space-y-3 border-t border-base-300/60 p-4">
-        <p className="text-sm text-base-content/60">
-          Troubleshooting data: registration events and safe error categories.
-          Counts are events, not people or completed signups.
-        </p>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Selector
-            label="Application"
-            options={APPLICATIONS}
-            value={application}
-            onChange={onApplicationChange}
-          />
-          {signup?.retry && (
-            <RefreshButton
-              label="Refresh diagnostics"
-              onClick={signup.retry}
-              loading={signup.loading}
-            />
-          )}
-        </div>
-        {signup && (
-          <Loaded report={signup} label="signup diagnostics">
-            {(s) => <SignupBlock signup={s} />}
-          </Loaded>
-        )}
-      </div>
+      {body}
     </details>
   )
 }
@@ -1595,7 +1647,8 @@ function FilterSelect({
   value: string | undefined
   onChange: (value: string | undefined) => void
 }) {
-  const id = `desktop-filter-${name}`
+  const filterId = useId()
+  const id = `desktop-filter-${name}-${filterId}`
   return (
     <label htmlFor={id} className={`analytics-filter analytics-filter-${name}`}>
       <span className="text-base-content/60">{label}</span>
@@ -1606,7 +1659,14 @@ function FilterSelect({
         onChange={(event) => onChange(event.target.value || undefined)}
         className="min-h-10 rounded-lg bg-base-100 px-2 text-sm ring-1 ring-base-300 focus-visible:outline-2 focus-visible:outline-primary"
       >
-        <option value="">All</option>
+        <option value="">
+          All{' '}
+          {name === 'os'
+            ? 'systems'
+            : name === 'version'
+              ? 'versions'
+              : 'plans'}
+        </option>
         {value && !options.some((option) => option.value === value) && (
           <option value={value}>{value}</option>
         )}
@@ -1748,11 +1808,11 @@ export function DesktopContent({
   const facts: Array<Fact> = [
     { label: 'People who ran the app', value: factOf(d.unique_users) },
     {
-      label: 'Hours the app was open, everyone added up',
+      label: 'App hours · all users',
       value: factOf(d.user_hours, formatHours),
     },
     {
-      label: 'Hours the ticker was visible',
+      label: 'Ticker hours · all users',
       value: factOf(d.ticker_user_hours, formatHours),
     },
     {
@@ -1760,8 +1820,8 @@ export function DesktopContent({
       value: multiScreenUsers(d.screens_per_user),
     },
     {
-      label: 'Came back the next day',
-      value: d1.available ? `${num(d1.returned)} of ${num(d1.eligible)}` : null,
+      label: 'Peak simultaneous users',
+      value: d.peak.available ? num(d.peak.users) : null,
     },
   ]
 
@@ -1783,10 +1843,9 @@ export function DesktopContent({
       }
       facts={facts}
       toolbar={toolbar}
-      visual={<WidgetRanking widgets={d.widgets} />}
       note={[coverage?.note, DESKTOP_NOTE].filter(Boolean).join(' ')}
+      updatedAt={d.generated_at}
     >
-      <Stamp at={d.generated_at} />
       <MoreDetail title="Usage details">
         <div className="flex flex-wrap items-center gap-3">
           {d.staff_excluded && <StaffExcludedBadge />}
@@ -1794,75 +1853,116 @@ export function DesktopContent({
             Version adoption and error rates → Versions
           </Link>
         </div>
-        <CoverageNote coverage={coverage!} />
-
-        <Section id="presence" title="Time spent with Scrollr">
-          <FactList
-            facts={[
-              {
-                label: 'App open - total hours',
-                value: factOf(d.user_hours, formatHours),
-              },
-              {
-                label: 'Ticker visible - total hours',
-                value: factOf(d.ticker_user_hours, formatHours),
-              },
-              {
-                label: 'Ticker screen-hours - includes multiple screens',
-                value: factOf(d.screen_hours, formatHours),
-              },
-              {
-                label: 'Peak simultaneous users',
-                value: d.peak.available ? num(d.peak.users) : null,
-              },
-            ]}
-          />
-          <DefinitionDisclosure>
-            <p>{d.definition}</p>
-            <p>
-              {d.peak.available
-                ? `Peak uses ${d.peak.resolution_seconds}-second samples.`
-                : d.peak.note}
-            </p>
-            {d.filters.note && <p>{d.filters.note}</p>}
-          </DefinitionDisclosure>
-        </Section>
-
-        <Section id="retention" title="Do people return?">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <RetentionCard metric={d.retention.d1} />
-            <RetentionCard metric={d.retention.d7} />
-            <RetentionCard metric={d.retention.d30} />
-          </div>
-          <DefinitionDisclosure>
-            <p>{d.retention.definition}</p>
-          </DefinitionDisclosure>
-        </Section>
-
-        <Section
-          id="widgets"
-          title="Widget types"
-          lede={`Share is of ${num(d.widgets.measured_ticker_users)} measured ticker users in the window.`}
-        >
-          <FactList
-            facts={[
-              {
-                label: `Widgets added ${periodPhrase(period)}`,
-                value: widgetChanges(d.widgets, 'added'),
-              },
-              {
-                label: `Widgets removed ${periodPhrase(period)}`,
-                value: widgetChanges(d.widgets, 'removed'),
-              },
-            ]}
-          />
-          <WidgetTable widgets={d.widgets} />
-          <DefinitionDisclosure>
-            <p>{d.widgets.definition}</p>
-            <p>{d.widgets.repeat_note}</p>
-            <p>{d.widgets.changes_note}</p>
-          </DefinitionDisclosure>
-        </Section>
+        <AnalyticsPanels
+          panels={[
+            {
+              label: 'Time & screens',
+              content: (
+                <>
+                  {' '}
+                  <Section id="presence" title="Time spent with Scrollr">
+                    <FactList
+                      facts={[
+                        {
+                          label: 'App open - total hours',
+                          value: factOf(d.user_hours, formatHours),
+                        },
+                        {
+                          label: 'Ticker visible - total hours',
+                          value: factOf(d.ticker_user_hours, formatHours),
+                        },
+                        {
+                          label:
+                            'Ticker screen-hours - includes multiple screens',
+                          value: factOf(d.screen_hours, formatHours),
+                        },
+                        {
+                          label: 'Peak simultaneous users',
+                          value: d.peak.available ? num(d.peak.users) : null,
+                        },
+                      ]}
+                    />
+                    <DefinitionDisclosure>
+                      <p>{d.definition}</p>
+                      <CoverageNote coverage={coverage!} />
+                      <p>
+                        {d.peak.available
+                          ? `Peak uses ${d.peak.resolution_seconds}-second samples.`
+                          : d.peak.note}
+                      </p>
+                      {d.filters.note && <p>{d.filters.note}</p>}
+                    </DefinitionDisclosure>
+                  </Section>
+                </>
+              ),
+            },
+            {
+              label: 'Return visits',
+              content: (
+                <>
+                  {' '}
+                  <Section
+                    id="retention"
+                    title="Do people return?"
+                    lede="All mature cohorts · independent of time, OS, version and plan filters."
+                  >
+                    <FactList
+                      facts={[
+                        {
+                          label: 'Came back the next day',
+                          value: d1.available
+                            ? `${num(d1.returned)} of ${num(d1.eligible)}`
+                            : null,
+                        },
+                      ]}
+                    />
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <RetentionCard metric={d.retention.d1} />
+                      <RetentionCard metric={d.retention.d7} />
+                      <RetentionCard metric={d.retention.d30} />
+                    </div>
+                    <DefinitionDisclosure>
+                      <p>{d.retention.definition}</p>
+                    </DefinitionDisclosure>
+                  </Section>
+                </>
+              ),
+            },
+            {
+              label: 'Widgets',
+              content: (
+                <>
+                  {' '}
+                  <Section
+                    id="widgets"
+                    title="Widget types"
+                    lede={`Share is of ${num(d.widgets.measured_ticker_users)} measured ticker users in the window.`}
+                  >
+                    <WidgetRanking widgets={d.widgets} />
+                    <FactList
+                      facts={[
+                        {
+                          label: `Widgets added ${periodPhrase(period)}`,
+                          value: widgetChanges(d.widgets, 'added'),
+                        },
+                        {
+                          label: `Widgets removed ${periodPhrase(period)}`,
+                          value: widgetChanges(d.widgets, 'removed'),
+                        },
+                      ]}
+                    />
+                    <WidgetTable widgets={d.widgets} />
+                    <DefinitionDisclosure>
+                      <p>{d.widgets.definition}</p>
+                      <p>{d.widgets.repeat_note}</p>
+                      <p>{d.widgets.changes_note}</p>
+                    </DefinitionDisclosure>
+                  </Section>
+                </>
+              ),
+            },
+          ]}
+        />
       </MoreDetail>
     </Question>
   )
@@ -2156,160 +2256,208 @@ export function RevenueContent({
         />
       }
       facts={facts}
-      note={REVENUE_NOTE}
+      note={[REVENUE_NOTE, r.account_note].filter(Boolean).join(' ')}
+      updatedAt={r.generated_at}
     >
       <MoreDetail title="Revenue details">
         <Stamp at={r.generated_at} />
-        <p className="text-sm text-base-content/65">{r.account_note}</p>
-        <Section
-          id="paying"
-          title="Paying customers"
-          lede={r.paying_now.definition}
-        >
-          <div className="grid items-start gap-4 lg:grid-cols-3">
-            <Card
-              title="Paying now"
-              label="Current"
-              note={r.paying_now.available ? r.paying_now_note : undefined}
-            >
-              {r.paying_now.available ? (
+        <AnalyticsPanels
+          panels={[
+            {
+              label: 'Customers & plans',
+              content: (
                 <>
-                  <Big>{num(r.paying_now.paying)}</Big>
-                  <div className="mt-3 border-t border-base-300/60 pt-2">
-                    <Row label="Lifetime" value={num(r.paying_now.lifetime)} />
-                    <Row label="Trialing" value={num(r.paying_now.trialing)} />
-                    <Row label="Past due" value={num(r.paying_now.past_due)} />
-                    <Row
-                      label="Canceling"
-                      value={num(r.paying_now.canceling)}
-                    />
-                    <Row label="Canceled" value={num(r.paying_now.canceled)} />
-                    <Row label="Free" value={num(r.paying_now.free)} />
-                  </div>
+                  <Section id="paying" title="Paying customers">
+                    <div className="analytics-plan-summary">
+                      <Card
+                        title="Paying now"
+                        label="Current"
+                        note={
+                          r.paying_now.available ? r.paying_now_note : undefined
+                        }
+                      >
+                        {r.paying_now.available ? (
+                          <>
+                            <Big>{num(r.paying_now.paying)}</Big>
+                            <div className="mt-3 border-t border-base-300/60 pt-2">
+                              <Row
+                                label="Lifetime"
+                                value={num(r.paying_now.lifetime)}
+                              />
+                              <Row
+                                label="Trialing"
+                                value={num(r.paying_now.trialing)}
+                              />
+                              <Row
+                                label="Payment failed"
+                                value={num(r.paying_now.past_due)}
+                              />
+                              <Row
+                                label="Cancelling"
+                                value={num(r.paying_now.canceling)}
+                              />
+                              <Row
+                                label="Canceled"
+                                value={num(r.paying_now.canceled)}
+                              />
+                              <Row
+                                label="Free"
+                                value={num(r.paying_now.free)}
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <Unmeasurable
+                            note={
+                              r.paying_now_note ??
+                              'The customer snapshot could not be read.'
+                            }
+                          />
+                        )}
+                      </Card>
+                      <div className="min-w-0">
+                        <Card title="Plan mix" label="Current">
+                          <PlanMixTable rows={r.paying_now.rows ?? []} />
+                        </Card>
+                      </div>
+                    </div>
+                    <DefinitionDisclosure summary="Customer counting rules">
+                      <p>{r.paying_now.definition}</p>
+                    </DefinitionDisclosure>
+                  </Section>
                 </>
-              ) : (
-                <Unmeasurable
-                  note={
-                    r.paying_now_note ??
-                    'The customer snapshot could not be read.'
-                  }
-                />
-              )}
-            </Card>
-            <div className="lg:col-span-2">
-              <Card title="Plan mix" label="Current">
-                <PlanMixTable rows={r.paying_now.rows ?? []} />
-              </Card>
-            </div>
-          </div>
-        </Section>
-
-        <Section
-          id="new-paying"
-          title="New paying customers"
-          lede={r.new_paying.definition}
-        >
-          <Card title="First payments" label={windowLabel}>
-            {r.new_paying.available ? (
-              <>
-                <MetricValue metric={r.new_paying.in_period}>
-                  <p className="mt-1 text-sm text-base-content/60">
-                    <DeltaBadge
-                      comparison={r.new_paying.in_period.comparison}
-                    />
-                  </p>
-                </MetricValue>
-                <div className="mt-3 border-t border-base-300/60 pt-2">
-                  <Row label="Lifetime" value={num(r.new_paying.lifetime)} />
-                </div>
-              </>
-            ) : (
-              <Unmeasurable note={r.new_paying.note} />
-            )}
-          </Card>
-        </Section>
-
-        <Section
-          id="earnings"
-          title="Net earnings"
-          lede="Stripe balance transactions by created time. Each currency stands alone; nothing is converted or added across currencies."
-        >
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3 text-xs text-base-content/60">
-              {r.earnings.fetched_at && (
-                <span>
-                  {r.earnings.cached ? 'Cached from' : 'Fetched from'} Stripe at{' '}
-                  {new Date(r.earnings.fetched_at).toLocaleString()}
-                </span>
-              )}
-              {r.earnings.partial && (
-                <span className="font-semibold text-warning">
-                  Stripe returned a partial ledger.
-                </span>
-              )}
-            </div>
-            <CoverageNote coverage={r.earnings.coverage} />
-            <div className="grid items-start gap-4 lg:grid-cols-2">
-              <Card
-                title={`Net (${r.earnings.primary_currency.toUpperCase()})`}
-                label={windowLabel}
-              >
-                <MetricValue
-                  metric={r.earnings.net}
-                  format={(v) => formatMinor(v, r.earnings.primary_currency)}
-                >
-                  <p className="mt-1 text-sm text-base-content/60">
-                    <DeltaBadge
-                      comparison={r.earnings.net.comparison}
-                      format={(v) =>
-                        formatMinor(v, r.earnings.primary_currency)
-                      }
-                    />
-                  </p>
-                </MetricValue>
-              </Card>
-              <Card
-                title={`Per bucket (${r.earnings.primary_currency.toUpperCase()}, minor units)`}
-                label={windowLabel}
-              >
-                <Bars
-                  buckets={r.earnings.curve}
-                  step={r.earnings.curve_step}
-                  label="Net earnings per bucket"
-                />
-              </Card>
-            </div>
-            {(r.earnings.currencies ?? []).map((c) => (
-              <EarningsBlock
-                key={c.currency}
-                earnings={c}
-                label={windowLabel}
-              />
-            ))}
-            {(r.earnings.currencies ?? []).length === 0 && (
-              <p className="text-sm text-base-content/65">
-                No balance transactions in this window.
-              </p>
-            )}
-            <div>
-              <h3 className="text-sm font-semibold text-base-content/70">
-                Lifetime
-              </h3>
-              <div className="mt-2 grid gap-4 lg:grid-cols-2">
-                {(r.earnings.lifetime ?? []).map((c) => (
-                  <EarningsBlock
-                    key={c.currency}
-                    earnings={c}
-                    label="Lifetime"
-                  />
-                ))}
-              </div>
-            </div>
-            <DefinitionDisclosure>
-              <p>{r.earnings.definition}</p>
-            </DefinitionDisclosure>
-          </div>
-        </Section>
+              ),
+            },
+            {
+              label: 'First payments',
+              content: (
+                <>
+                  {' '}
+                  <Section
+                    id="new-paying"
+                    title="New paying customers"
+                    lede={r.new_paying.definition}
+                  >
+                    <Card title="First payments" label={windowLabel}>
+                      {r.new_paying.available ? (
+                        <>
+                          <MetricValue metric={r.new_paying.in_period}>
+                            <p className="mt-1 text-sm text-base-content/60">
+                              <DeltaBadge
+                                comparison={r.new_paying.in_period.comparison}
+                              />
+                            </p>
+                          </MetricValue>
+                          <div className="mt-3 border-t border-base-300/60 pt-2">
+                            <Row
+                              label="Lifetime"
+                              value={num(r.new_paying.lifetime)}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <Unmeasurable note={r.new_paying.note} />
+                      )}
+                    </Card>
+                  </Section>
+                </>
+              ),
+            },
+            {
+              label: 'Earnings',
+              content: (
+                <>
+                  {' '}
+                  <Section
+                    id="earnings"
+                    title="Net earnings"
+                    lede="Stripe balance transactions by created time. Each currency stands alone; nothing is converted or added across currencies."
+                  >
+                    <FactList facts={facts.slice(-1)} />
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-base-content/60">
+                        {r.earnings.fetched_at && (
+                          <span>
+                            {r.earnings.cached ? 'Cached from' : 'Fetched from'}{' '}
+                            Stripe at{' '}
+                            {new Date(r.earnings.fetched_at).toLocaleString()}
+                          </span>
+                        )}
+                        {r.earnings.partial && (
+                          <span className="font-semibold text-warning">
+                            Stripe returned a partial ledger.
+                          </span>
+                        )}
+                      </div>
+                      <CoverageNote coverage={r.earnings.coverage} />
+                      <div className="grid items-start gap-4 lg:grid-cols-2">
+                        <Card
+                          title={`Net (${r.earnings.primary_currency.toUpperCase()})`}
+                          label={windowLabel}
+                        >
+                          <MetricValue
+                            metric={r.earnings.net}
+                            format={(v) =>
+                              formatMinor(v, r.earnings.primary_currency)
+                            }
+                          >
+                            <p className="mt-1 text-sm text-base-content/60">
+                              <DeltaBadge
+                                comparison={r.earnings.net.comparison}
+                                format={(v) =>
+                                  formatMinor(v, r.earnings.primary_currency)
+                                }
+                              />
+                            </p>
+                          </MetricValue>
+                        </Card>
+                        <Card
+                          title={`Per bucket (${r.earnings.primary_currency.toUpperCase()}, minor units)`}
+                          label={windowLabel}
+                        >
+                          <Bars
+                            buckets={r.earnings.curve}
+                            step={r.earnings.curve_step}
+                            label="Net earnings per bucket"
+                          />
+                        </Card>
+                      </div>
+                      {(r.earnings.currencies ?? []).map((c) => (
+                        <EarningsBlock
+                          key={c.currency}
+                          earnings={c}
+                          label={windowLabel}
+                        />
+                      ))}
+                      {(r.earnings.currencies ?? []).length === 0 && (
+                        <p className="text-sm text-base-content/65">
+                          No balance transactions in this window.
+                        </p>
+                      )}
+                      <div>
+                        <h3 className="text-sm font-semibold text-base-content/70">
+                          Lifetime
+                        </h3>
+                        <div className="mt-2 grid gap-4 lg:grid-cols-2">
+                          {(r.earnings.lifetime ?? []).map((c) => (
+                            <EarningsBlock
+                              key={c.currency}
+                              earnings={c}
+                              label="Lifetime"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <DefinitionDisclosure>
+                        <p>{r.earnings.definition}</p>
+                      </DefinitionDisclosure>
+                    </div>
+                  </Section>
+                </>
+              ),
+            },
+          ]}
+        />
       </MoreDetail>
     </Question>
   )
@@ -2542,168 +2690,231 @@ export function SupportContent({
       }
       facts={facts}
       note={[s.paying_note, SUPPORT_NOTE].filter(Boolean).join(' ')}
+      updatedAt={s.generated_at}
     >
-      <MoreDetail title="Support performance">
-        <div className="flex flex-wrap items-center gap-3">
-          <Stamp at={s.generated_at} />
-          <Link to="/admin/support" className={LINK}>
-            Open support →
-          </Link>
-        </div>
-        <Section
-          id="queue"
-          title="Queue"
-          lede="The whole queue as the pipeline classifies it. Paying counts only tickets with a verified account."
-        >
-          <Card title="Buckets" label="Current" note={s.paying_note}>
-            <div className="grid gap-4 sm:grid-cols-4">
-              <Stat
-                label="Needs attention"
-                value={num(s.needs_attention.total)}
-                sub={paying(s.needs_attention.paying)}
-              />
-              <Stat
-                label="Waiting on customer"
-                value={num(s.waiting_on_customer.total)}
-                sub={paying(s.waiting_on_customer.paying)}
-              />
-              <Stat
-                label="Completed"
-                value={num(s.completed.total)}
-                sub={`${num(s.completed_closed)} closed · ${num(s.completed_dismissed)} dismissed${s.completed.paying > 0 ? ` · ${num(s.completed.paying)} paying` : ''}`}
-              />
-              <Stat
-                label="Total"
-                value={num(s.total.total)}
-                sub={paying(s.total.paying)}
-              />
-            </div>
-            <div className="mt-4 border-t border-base-300/60 pt-2">
-              <Row
-                label="Oldest waiting for us"
-                value={
-                  <MetricValue
-                    metric={s.oldest_needs_attention_hours}
-                    format={(h) => `${num(Math.round(h))} h`}
-                    size="inline"
-                  />
-                }
-              />
-              {s.oldest_ticket && (
-                <p className="text-xs text-base-content/65">
-                  Ticket #{s.oldest_ticket}
-                </p>
-              )}
-              <Row
-                label="Auto-send"
-                value={
-                  s.autosend.armed
-                    ? `armed · ${s.autosend.hold_minutes} min hold`
-                    : s.autosend.paused
-                      ? 'paused'
-                      : 'off'
-                }
-              />
-              <p className="text-xs text-base-content/65">{s.autosend.note}</p>
-            </div>
-            {s.definitions && Object.keys(s.definitions).length > 0 && (
-              <DefinitionDisclosure summary="Bucket definitions">
-                {Object.entries(s.definitions).map(([key, text]) => (
-                  <p key={key}>
-                    <strong>{key.replace(/_/g, ' ')}</strong> — {text}
-                  </p>
-                ))}
-              </DefinitionDisclosure>
-            )}
-          </Card>
-        </Section>
-
-        <Section id="flow" title="Created and completed" lede={s.history_note}>
-          <CoverageNote coverage={s.coverage} />
-          <div className="grid items-start gap-4 lg:grid-cols-2">
-            <Card title="Created" label={windowLabel}>
-              <MetricValue metric={s.created}>
-                <p className="mt-1 text-sm text-base-content/60">
-                  <DeltaBadge comparison={s.created.comparison} goodIsDown />
-                  {s.paying_created > 0
-                    ? ` · ${num(s.paying_created)} from paying customers`
-                    : ''}
-                </p>
-              </MetricValue>
-              <div className="mt-3">
-                <Bars
-                  buckets={s.created_curve}
-                  step={s.curve_step}
-                  label="Tickets created per bucket"
-                />
-              </div>
-            </Card>
-            <Card title="Completed" label={windowLabel}>
-              <MetricValue metric={s.completed_in_period}>
-                <p className="mt-1 text-sm text-base-content/60">
-                  <DeltaBadge comparison={s.completed_in_period.comparison} />
-                </p>
-              </MetricValue>
-              <div className="mt-3">
-                <Bars
-                  buckets={s.completed_curve}
-                  step={s.curve_step}
-                  label="Tickets completed per bucket"
-                  tone="text-success"
-                />
-              </div>
-            </Card>
+      <div className="analytics-support-explore">
+        <Link to="/admin/support" className="analytics-queue-link">
+          Manage tickets <span aria-hidden>→</span>
+        </Link>
+        <MoreDetail title="Support performance">
+          <div className="flex flex-wrap items-center gap-3">
+            <Stamp at={s.generated_at} />
+            <Link to="/admin/support" className={LINK}>
+              Open support →
+            </Link>
           </div>
-          <Card
-            title="Backlog (estimate)"
-            label={windowLabel}
-            note="Estimated from opened and closed timestamps only; reopenings are not reconstructable, so a past day's backlog is an estimate."
-          >
-            <Sparkline
-              buckets={s.backlog_curve}
-              step={s.curve_step}
-              label="Estimated open tickets per bucket"
-            />
-          </Card>
-        </Section>
-
-        <Section
-          id="speed"
-          title="Response and completion"
-          lede="Medians over tickets in the window, from retained timestamps. The sample size travels with each figure."
-        >
-          <div className="grid items-start gap-4 lg:grid-cols-2">
-            <Card title="First response, median" label={windowLabel}>
-              <MetricValue
-                metric={s.first_response_median_hours}
-                format={formatHours}
-              >
-                <p className="mt-1 text-sm text-base-content/60">
-                  <DeltaBadge
-                    comparison={s.first_response_median_hours.comparison}
-                    format={(v) => `${v > 0 ? '+' : ''}${formatHours(v)}`}
-                    goodIsDown
-                  />
-                </p>
-              </MetricValue>
-            </Card>
-            <Card title="Completion, median" label={windowLabel}>
-              <MetricValue
-                metric={s.completion_median_hours}
-                format={formatHours}
-              >
-                <p className="mt-1 text-sm text-base-content/60">
-                  <DeltaBadge
-                    comparison={s.completion_median_hours.comparison}
-                    format={(v) => `${v > 0 ? '+' : ''}${formatHours(v)}`}
-                    goodIsDown
-                  />
-                </p>
-              </MetricValue>
-            </Card>
-          </div>
-        </Section>
-      </MoreDetail>
+          <AnalyticsPanels
+            panels={[
+              {
+                label: 'Queue',
+                content: (
+                  <>
+                    {' '}
+                    <Section
+                      id="queue"
+                      title="Queue"
+                      lede="The whole queue as the pipeline classifies it. Paying counts only tickets with a verified account."
+                    >
+                      <FactList facts={facts.slice(7)} />
+                      <Card
+                        title="Buckets"
+                        label="Current"
+                        note={s.paying_note}
+                      >
+                        <div className="grid gap-4 sm:grid-cols-4">
+                          <Stat
+                            label="Needs attention"
+                            value={num(s.needs_attention.total)}
+                            sub={paying(s.needs_attention.paying)}
+                          />
+                          <Stat
+                            label="Waiting on customer"
+                            value={num(s.waiting_on_customer.total)}
+                            sub={paying(s.waiting_on_customer.paying)}
+                          />
+                          <Stat
+                            label="Completed"
+                            value={num(s.completed.total)}
+                            sub={`${num(s.completed_closed)} closed · ${num(s.completed_dismissed)} dismissed${s.completed.paying > 0 ? ` · ${num(s.completed.paying)} paying` : ''}`}
+                          />
+                          <Stat
+                            label="Total"
+                            value={num(s.total.total)}
+                            sub={paying(s.total.paying)}
+                          />
+                        </div>
+                        <div className="mt-4 border-t border-base-300/60 pt-2">
+                          <Row
+                            label="Oldest waiting for us"
+                            value={
+                              <MetricValue
+                                metric={s.oldest_needs_attention_hours}
+                                format={(h) => `${num(Math.round(h))} h`}
+                                size="inline"
+                              />
+                            }
+                          />
+                          {s.oldest_ticket && (
+                            <p className="text-xs text-base-content/65">
+                              Ticket #{s.oldest_ticket}
+                            </p>
+                          )}
+                          <Row
+                            label="Auto-send"
+                            value={
+                              s.autosend.armed
+                                ? `armed · ${s.autosend.hold_minutes} min hold`
+                                : s.autosend.paused
+                                  ? 'paused'
+                                  : 'off'
+                            }
+                          />
+                          <p className="text-xs text-base-content/65">
+                            {s.autosend.note}
+                          </p>
+                        </div>
+                        {s.definitions &&
+                          Object.keys(s.definitions).length > 0 && (
+                            <DefinitionDisclosure summary="Bucket definitions">
+                              {Object.entries(s.definitions).map(
+                                ([key, text]) => (
+                                  <p key={key}>
+                                    <strong>{key.replace(/_/g, ' ')}</strong> —{' '}
+                                    {text}
+                                  </p>
+                                ),
+                              )}
+                            </DefinitionDisclosure>
+                          )}
+                      </Card>
+                    </Section>
+                  </>
+                ),
+              },
+              {
+                label: 'Ticket history',
+                content: (
+                  <>
+                    {' '}
+                    <Section
+                      id="flow"
+                      title="Created and completed"
+                      lede={s.history_note}
+                    >
+                      <CoverageNote coverage={s.coverage} />
+                      <div className="grid items-start gap-4 lg:grid-cols-2">
+                        <Card title="Created" label={windowLabel}>
+                          <MetricValue metric={s.created}>
+                            <p className="mt-1 text-sm text-base-content/60">
+                              <DeltaBadge
+                                comparison={s.created.comparison}
+                                goodIsDown
+                              />
+                              {s.paying_created > 0
+                                ? ` · ${num(s.paying_created)} from paying customers`
+                                : ''}
+                            </p>
+                          </MetricValue>
+                          <div className="mt-3">
+                            <Bars
+                              buckets={s.created_curve}
+                              step={s.curve_step}
+                              label="Tickets created per bucket"
+                            />
+                          </div>
+                        </Card>
+                        <Card title="Completed" label={windowLabel}>
+                          <MetricValue metric={s.completed_in_period}>
+                            <p className="mt-1 text-sm text-base-content/60">
+                              <DeltaBadge
+                                comparison={s.completed_in_period.comparison}
+                              />
+                            </p>
+                          </MetricValue>
+                          <div className="mt-3">
+                            <Bars
+                              buckets={s.completed_curve}
+                              step={s.curve_step}
+                              label="Tickets completed per bucket"
+                              tone="text-success"
+                            />
+                          </div>
+                        </Card>
+                      </div>
+                      <Card
+                        title="Backlog (estimate)"
+                        label={windowLabel}
+                        note="Estimated from opened and closed timestamps only; reopenings are not reconstructable, so a past day's backlog is an estimate."
+                      >
+                        <Sparkline
+                          buckets={s.backlog_curve}
+                          step={s.curve_step}
+                          label="Estimated open tickets per bucket"
+                        />
+                      </Card>
+                    </Section>
+                  </>
+                ),
+              },
+              {
+                label: 'Response times',
+                content: (
+                  <>
+                    <FactList facts={facts.slice(6, 7)} />
+                    <Section
+                      id="speed"
+                      title="Response and completion"
+                      lede="Medians over tickets in the window, from retained timestamps. The sample size travels with each figure."
+                    >
+                      <div className="grid items-start gap-4 lg:grid-cols-2">
+                        <Card
+                          title="First response, median"
+                          label={windowLabel}
+                        >
+                          <MetricValue
+                            metric={s.first_response_median_hours}
+                            format={formatHours}
+                          >
+                            <p className="mt-1 text-sm text-base-content/60">
+                              <DeltaBadge
+                                comparison={
+                                  s.first_response_median_hours.comparison
+                                }
+                                format={(v) =>
+                                  `${v > 0 ? '+' : ''}${formatHours(v)}`
+                                }
+                                goodIsDown
+                              />
+                            </p>
+                          </MetricValue>
+                        </Card>
+                        <Card title="Completion, median" label={windowLabel}>
+                          <MetricValue
+                            metric={s.completion_median_hours}
+                            format={formatHours}
+                          >
+                            <p className="mt-1 text-sm text-base-content/60">
+                              <DeltaBadge
+                                comparison={
+                                  s.completion_median_hours.comparison
+                                }
+                                format={(v) =>
+                                  `${v > 0 ? '+' : ''}${formatHours(v)}`
+                                }
+                                goodIsDown
+                              />
+                            </p>
+                          </MetricValue>
+                        </Card>
+                      </div>
+                    </Section>
+                  </>
+                ),
+              },
+            ]}
+          />
+        </MoreDetail>
+      </div>
     </Question>
   )
 }

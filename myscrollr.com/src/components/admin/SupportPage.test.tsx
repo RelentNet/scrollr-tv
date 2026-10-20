@@ -496,7 +496,7 @@ describe('the case', () => {
   it('still offers every action, by name', async () => {
     const host = await render(1440)
     await open(host, 'Morgan Ellis')
-    const labels = [...host.querySelectorAll('aside button')].map((b) =>
+    const labels = [...host.querySelectorAll('button')].map((b) =>
       b.textContent.trim(),
     )
     for (const verb of [

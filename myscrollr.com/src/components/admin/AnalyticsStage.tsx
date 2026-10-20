@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 
-/** Retain the workspace's scroll extent during loads and workspace transitions. */
+/** Keep scroll extent during uncached loads; reset the reservation at a new width. */
 export function AnalyticsStage({
   children,
   transitionKey,
@@ -11,6 +11,24 @@ export function AnalyticsStage({
 }) {
   const frame = useRef<HTMLDivElement>(null)
   const content = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (!content.current || typeof ResizeObserver === 'undefined') return
+    let width = 0
+    let height = 0
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width !== width) {
+        width = entry.contentRect.width
+        height = 0
+      }
+      height = Math.max(height, entry.contentRect.height)
+      frame.current?.style.setProperty(
+        '--analytics-stage-height',
+        `${height}px`,
+      )
+    })
+    observer.observe(content.current)
+    return () => observer.disconnect()
+  }, [])
   useEffect(() => {
     if (
       !content.current ||
@@ -32,27 +50,6 @@ export function AnalyticsStage({
     )
     return () => animation.cancel()
   }, [transitionKey])
-  useLayoutEffect(() => {
-    if (
-      !frame.current ||
-      !content.current ||
-      typeof ResizeObserver === 'undefined'
-    )
-      return
-    let width = 0
-    let height = 0
-    const observer = new ResizeObserver(([entry]) => {
-      if (!frame.current) return
-      if (entry.contentRect.width !== width) {
-        width = entry.contentRect.width
-        height = 0
-      }
-      height = Math.max(height, entry.contentRect.height)
-      frame.current.style.minHeight = `${height}px`
-    })
-    observer.observe(content.current)
-    return () => observer.disconnect()
-  }, [])
   return (
     <div ref={frame} className="analytics-stage">
       <div ref={content} className="analytics-sections">

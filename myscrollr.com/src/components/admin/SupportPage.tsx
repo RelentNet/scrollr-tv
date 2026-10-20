@@ -35,7 +35,7 @@ import type {
 import type { CaseEdits } from '@/components/admin/CaseActions'
 import type { SupportSearch } from '@/lib/adminSearch'
 import { adminApi, subscribeToSupportEvents } from '@/api/admin'
-import CaseActions from '@/components/admin/CaseActions'
+import CaseActions, { CaseDisposition } from '@/components/admin/CaseActions'
 import {
   QUEUE_SECTIONS,
   SORT_FIELDS,
@@ -829,9 +829,12 @@ function PersonHeader({
             .join(' · ')}
         </p>
         {subject.plan_note && (
-          <p className="mt-1.5 max-w-[75ch] text-xs text-base-content/50">
-            {subject.plan_note}
-          </p>
+          <details className="mt-1.5 max-w-[75ch] text-xs text-base-content/50">
+            <summary className="cursor-pointer">
+              Identity & plan details
+            </summary>
+            <p className="mt-2">{subject.plan_note}</p>
+          </details>
         )}
       </div>
 
@@ -854,7 +857,13 @@ function PersonHeader({
  * thread. The reply and everything behind it live in the workbench, which is
  * its own pane from 1440 up and sits under this below that.
  */
-function CaseConversation({ detail }: { detail: CaseDetail }) {
+function CaseConversation({
+  detail,
+  onCase,
+}: {
+  detail: CaseDetail
+  onCase: (next: CaseDetail) => void
+}) {
   const tone = dispositionTone(detail.draft?.disposition, detail.draft?.status)
   const stopped = detail.draft?.disposition_reason || detail.group_reason
 
@@ -869,28 +878,36 @@ function CaseConversation({ detail }: { detail: CaseDetail }) {
         </span>
       </div>
 
+      <CaseDisposition
+        key={detail.ticket_number}
+        detail={detail}
+        onCase={onCase}
+      />
+
       {/* Why it stopped, in one sentence, before anything else. The old page
           made you read eight sections to find this out. */}
-      <div className={`rounded-xl px-4 py-3 ring-1 ${TONE_RING[tone]}`}>
-        <div className="flex gap-2.5">
-          {tone === 'stop' ? (
-            <AlertTriangle
-              size={17}
-              className="mt-0.5 shrink-0 text-error"
-              aria-hidden
-            />
-          ) : (
-            <HelpCircle
-              size={17}
-              className="mt-0.5 shrink-0 text-base-content/40"
-              aria-hidden
-            />
-          )}
-          <p className="max-w-[75ch] text-sm leading-relaxed">{stopped}</p>
+      {detail.console_status !== 'dismissed' && stopped && (
+        <div className={`rounded-xl px-4 py-3 ring-1 ${TONE_RING[tone]}`}>
+          <div className="flex gap-2.5">
+            {tone === 'stop' ? (
+              <AlertTriangle
+                size={17}
+                className="mt-0.5 shrink-0 text-error"
+                aria-hidden
+              />
+            ) : (
+              <HelpCircle
+                size={17}
+                className="mt-0.5 shrink-0 text-base-content/40"
+                aria-hidden
+              />
+            )}
+            <p className="max-w-[75ch] text-sm leading-relaxed">{stopped}</p>
+          </div>
         </div>
-      </div>
+      )}
 
-      {detail.hold && (
+      {detail.console_status !== 'dismissed' && detail.hold && (
         <HoldBanner hold={detail.hold} autosend={detail.autosend} />
       )}
 
@@ -1878,11 +1895,24 @@ export default function SupportPage({
                           /* An empty paying section is a fact about the data,
                              not a blank box: almost no ticket is joined to an
                              account, and the server says so in a sentence. */
-                          <p className="px-2 text-xs text-base-content/45">
-                            {section.key === 'paying'
-                              ? queue.accounts.note || section.empty
-                              : section.empty}
-                          </p>
+                          <div className="px-2 text-xs text-base-content/45">
+                            <p>
+                              {section.key === 'paying'
+                                ? 'No tickets linked to a paying account.'
+                                : section.empty}
+                            </p>
+                            {section.key === 'paying' &&
+                              queue.accounts.note && (
+                                <details className="mt-2">
+                                  <summary className="cursor-pointer">
+                                    How accounts are matched
+                                  </summary>
+                                  <p className="mt-2 leading-relaxed">
+                                    {queue.accounts.note}
+                                  </p>
+                                </details>
+                              )}
+                          </div>
                         ) : rowsMode === 'person' ? (
                           (inSection as Array<QueuePerson>).map((p) => (
                             <PersonCard
@@ -1979,7 +2009,20 @@ export default function SupportPage({
                     className="size-5 animate-spin text-base-content/40"
                   />
                 )}
-                {detail && <CaseConversation detail={detail} />}
+                {detail && (
+                  <CaseConversation
+                    detail={detail}
+                    onCase={(next) => {
+                      setDetail(next, detail.draft?.id)
+                      if (next.console_status === 'dismissed')
+                        setEdits((current) => {
+                          const remaining = { ...current }
+                          delete remaining[editKey]
+                          return remaining
+                        })
+                    }}
+                  />
+                )}
                 <OtherTickets
                   rows={mine}
                   active={activeTicket}

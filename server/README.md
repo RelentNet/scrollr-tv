@@ -6,7 +6,7 @@ source. Design and roadmap: [`docs/SCROLLR_TV.md`](../docs/SCROLLR_TV.md).
 | Route | What |
 |---|---|
 | `/` | status page: account, overlay URL, sign in / out |
-| `/overlay/?bg=transparent` | the bar, for OBS (Browser Source, 1920×1080) and vMix (Web Browser input) |
+| `/overlay/` | the bar, exactly 64 px tall: OBS Browser Source 1920×64 (1280×64 at 720p) at the top of the canvas, or vMix Web Browser input, same size. A full-canvas source also works: the body is transparent by default |
 | `/api/*` | the Scrollr API with this server's bearer token added |
 | `/auth/state`, `/auth/login`, `/auth/logout` | sign-in state and flow |
 

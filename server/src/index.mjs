@@ -41,7 +41,7 @@ async function statusPage(res) {
 <p>${who}</p>
 <p>${action}</p>
 <table>
-<tr><td>Overlay</td><td><a href="/overlay/?bg=transparent">${ORIGIN}/overlay/?bg=transparent</a><br><span class="muted">OBS: Browser Source, 1920×1080. vMix: Web Browser input. Add <code>&amp;theme=scrollr-light</code>, <code>&amp;mode=continuous</code>, <code>&amp;utils=clock,weather</code>, <code>&amp;bg=solid</code>.</span></td></tr>
+<tr><td>Overlay</td><td><a href="/overlay/">${ORIGIN}/overlay/</a><br><span class="muted">The bar is exactly <b>64 px</b> tall. OBS: Browser Source <b>1920×64</b> (1280×64 for a 720p canvas), placed at the top of the canvas. vMix: Web Browser input, same size. Nothing else paints, so no transparency is needed; a full-canvas source works too (<code>?bg=transparent</code> is the default). Add <code>?theme=scrollr-light</code>, <code>?mode=continuous</code>, <code>?utils=clock,weather</code>, <code>?bg=solid</code>.</span></td></tr>
 <tr><td>API</td><td><code>${ORIGIN}/api/…</code> → <code>${escapeHtml(API_BASE)}</code></td></tr>
 <tr><td>Tokens</td><td><code>${escapeHtml(tokenFile())}</code></td></tr>
 <tr><td>Overlay files</td><td><code>${escapeHtml(overlayLocation())}</code></td></tr>

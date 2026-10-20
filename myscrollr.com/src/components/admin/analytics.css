@@ -1568,6 +1568,12 @@ html:has(.analytics-drawer[open]) {
   font-size: 11px;
 }
 /* The drawer header and chapter navigation never leave view; only its content scrolls. */
+.analytics-drawer:has(.analytics-panels) {
+  overflow: clip;
+}
+.analytics-drawer:has(.analytics-panels) .analytics-drawer-surface > header {
+  flex-shrink: 0;
+}
 .analytics-drawer:has(.analytics-panels) .analytics-drawer-surface {
   height: 100%;
   min-height: 0;
@@ -1602,7 +1608,251 @@ html:has(.analytics-drawer[open]) {
   flex: 1;
   overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 2px 4px 28px;
+}
+
+/* Focused widget measurements keep the drawer readable without a wide spreadsheet. */
+.analytics-widget-browser {
+  display: grid;
+  gap: 14px;
+}
+.analytics-drawer-utility {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--analytics-series);
+}
+.analytics-widget-views {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 3px;
+  border: 1px solid var(--analytics-line);
+  border-radius: 10px;
+}
+.analytics-widget-views button {
+  min-height: 38px;
+  padding: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 7px;
+  color: var(--analytics-muted);
+  cursor: pointer;
+}
+.analytics-widget-views button[aria-pressed='true'] {
+  color: var(--analytics-ink);
+  background: color-mix(in srgb, var(--analytics-series) 12%, transparent);
+}
+.analytics-widget-tools {
+  display: flex;
+  gap: 10px;
+}
+.analytics-widget-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid var(--analytics-line);
+  border-radius: 8px;
+  color: var(--analytics-muted);
+}
+.analytics-widget-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  background: transparent;
+  color: var(--color-base-content);
+  font-size: 13px;
+  outline: none;
+}
+.analytics-widget-search:focus-within {
+  outline: 2px solid var(--analytics-series);
+  outline-offset: 2px;
+}
+.analytics-widget-search input:focus-visible {
+  box-shadow: none;
+}
+.analytics-widget-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.analytics-widget-search button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 32px;
+  cursor: pointer;
+}
+.analytics-widget-search button:disabled {
+  visibility: hidden;
+}
+.analytics-widget-tools select {
+  width: 148px;
+  min-width: 0;
+  border: 1px solid var(--analytics-line);
+  border-radius: 8px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: var(--color-base-100);
+}
+.analytics-widget-count,
+.analytics-widget-footnote {
+  color: var(--analytics-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.analytics-widget-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.analytics-widget-name-column {
+  width: 40%;
+}
+.analytics-widget-table th,
+.analytics-widget-table td {
+  padding-inline: 10px;
+  text-align: right;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+.analytics-widget-table th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+.analytics-widget-table th:last-child,
+.analytics-widget-table td:last-child {
+  padding-right: 0;
+}
+.analytics-widget-table thead th {
+  height: 46px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--analytics-muted);
+  border-bottom: 1px solid var(--analytics-line);
+}
+.analytics-widget-table tbody tr {
+  height: 64px;
+}
+.analytics-widget-table tbody th {
+  font-weight: 550;
+}
+.analytics-widget-table tbody td {
+  font-weight: 500;
+}
+.analytics-widget-table tbody th,
+.analytics-widget-table tbody td {
+  border-bottom: 1px solid var(--analytics-line);
+}
+.analytics-widget-table small {
+  display: block;
+  margin-top: 5px;
+  color: var(--analytics-muted);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.analytics-widget-table th small,
+.analytics-category-table th span {
+  text-transform: capitalize;
+}
+.analytics-widget-share {
+  display: block;
+  height: 3px;
+  max-width: 64px;
+  margin: 7px 0 0 auto;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--analytics-line);
+}
+.analytics-widget-share > span {
+  display: block;
+  height: 100%;
+  background: var(--analytics-series);
+}
+.analytics-widget-no-results {
+  padding: 36px 16px;
+  text-align: center;
+  color: var(--analytics-muted);
+  font-size: 13px;
+}
+.analytics-widget-categories summary {
+  padding: 16px 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.analytics-widget-categories summary > span {
+  float: right;
+  color: var(--analytics-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.analytics-category-table-wrap {
+  overflow-x: auto;
+}
+.analytics-category-table {
+  min-width: 480px;
+}
+@media (max-width: 520px) {
+  .analytics-widget-tools {
+    flex-wrap: wrap;
+  }
+  .analytics-widget-search {
+    flex-basis: 100%;
+  }
+  .analytics-widget-tools select {
+    width: 100%;
+    min-height: 38px;
+  }
+  .analytics-widget-table {
+    font-size: 12px;
+  }
+  .analytics-widget-name-column {
+    width: 32%;
+  }
+  .analytics-widget-table th,
+  .analytics-widget-table td {
+    padding-inline: 5px;
+  }
+  .analytics-widget-table thead th {
+    font-size: 10px;
+    overflow-wrap: normal;
+    height: 56px;
+  }
+  .analytics-widget-table tbody tr {
+    height: 80px;
+  }
+  .analytics-widget-table tbody th > span {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .analytics-widget-table small {
+    font-size: 10px;
+  }
+  .analytics-widget-views button {
+    font-size: 11px;
+  }
+  .analytics-panel-tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+  .analytics-panel-tabs button {
+    min-width: 0;
+    padding-inline: 4px;
+    font-size: 11px;
+  }
 }
 .analytics-panel-body > * + * {
   margin-top: 24px;

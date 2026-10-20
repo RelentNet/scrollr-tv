@@ -14,6 +14,7 @@ import { ReportBoundary } from './ReportBoundary'
 import { AnalyticsDetails } from './AnalyticsDetails'
 import { AnalyticsStage } from './AnalyticsStage'
 import { AnalyticsPanels } from './AnalyticsPanels'
+import { AnalyticsWidgetTable } from './AnalyticsWidgetTable'
 import './analytics.css'
 import {
   Bars,
@@ -61,7 +62,6 @@ import type {
   ScreensBucket,
   SupportSummary,
   Website,
-  WidgetRow,
 } from '@/api/adminDashboard'
 import type { RetentionMetric } from '@/api/adminProductAnalytics'
 import type { AnalyticsView } from '@/lib/adminFormat'
@@ -1809,14 +1809,6 @@ export interface DesktopContentProps {
   showFilters?: boolean
 }
 
-type WidgetSort = 'users' | 'user_hours' | 'screen_hours'
-
-const WIDGET_SORTS: ReadonlyArray<{ value: WidgetSort; label: string }> = [
-  { value: 'users', label: 'Users' },
-  { value: 'user_hours', label: 'User-hours' },
-  { value: 'screen_hours', label: 'Screen-hours' },
-]
-
 function FilterSelect({
   label,
   name,
@@ -2038,8 +2030,12 @@ export function DesktopContent({
       <MoreDetail title="Usage details">
         <div className="flex flex-wrap items-center gap-3">
           {d.staff_excluded && <StaffExcludedBadge />}
-          <Link to="/admin/versions" className={LINK}>
-            Version adoption and error rates → Versions
+          <Link
+            to="/admin/versions"
+            className="analytics-drawer-utility"
+            title="Version adoption and error rates"
+          >
+            Versions <span aria-hidden>↗</span>
           </Link>
         </div>
         <AnalyticsPanels
@@ -2144,7 +2140,7 @@ export function DesktopContent({
                         },
                       ]}
                     />
-                    <WidgetTable widgets={d.widgets} />
+                    <AnalyticsWidgetTable widgets={d.widgets} />
                     <DefinitionDisclosure>
                       <p>{d.widgets.definition}</p>
                       <p>{d.widgets.repeat_note}</p>
@@ -2213,124 +2209,6 @@ function RetentionCard({ metric }: { metric: RetentionMetric }) {
         </p>
       )}
     </Card>
-  )
-}
-
-function WidgetTable({ widgets }: { widgets: DesktopUsage['widgets'] }) {
-  const [sort, setSort] = useState<WidgetSort>('users')
-  const rows = [...(widgets.rows ?? [])].sort((a, b) => b[sort] - a[sort])
-  const categories = widgets.categories ?? []
-  if (rows.length === 0 && categories.length === 0) {
-    return (
-      <p className="rounded-xl p-4 text-sm text-base-content/65 ring-1 ring-base-300/60">
-        No widget was displayed on a measured ticker in this window.
-      </p>
-    )
-  }
-  const th = 'px-3 py-2 text-right font-medium whitespace-nowrap'
-  const td = 'px-3 py-2 text-right tabular-nums'
-  return (
-    <div className="space-y-3">
-      <Selector
-        label="Sort widgets by"
-        options={WIDGET_SORTS}
-        value={sort}
-        onChange={setSort}
-      />
-      <div className="overflow-x-auto rounded-xl ring-1 ring-base-300/60">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-base-200/40 text-left text-xs text-base-content/55">
-              <th className="px-3 py-2 font-medium">Widget</th>
-              <th className={th}>Users</th>
-              <th className={th}>Share</th>
-              <th className={th}>User-hours</th>
-              <th className={th}>Screen-hours</th>
-              <th className={th}>Repeat users</th>
-              <th className={th}>Added / removed</th>
-              <th className={th}>Configured / enabled</th>
-              <th className={th}>Trend</th>
-            </tr>
-          </thead>
-          <tbody>
-            {categories.map((c) => (
-              <tr
-                key={`category-${c.category}`}
-                className="border-t border-base-300/50 bg-base-200/20 font-semibold"
-              >
-                <td className="px-3 py-2 capitalize">
-                  {c.category}{' '}
-                  <span className="text-xs font-normal text-base-content/55">
-                    {num(c.widgets)} types
-                  </span>
-                </td>
-                <td className={td}>{num(c.users)}</td>
-                <td className={td}>{pct(c.share)}</td>
-                <td className={td}>{formatHours(c.user_hours)}</td>
-                <td className={td}>{formatHours(c.screen_hours)}</td>
-                <td className={td}>—</td>
-                <td className={td}>—</td>
-                <td className={td}>—</td>
-                <td className={td}>—</td>
-              </tr>
-            ))}
-            {rows.map((row) => (
-              <WidgetTableRow
-                key={row.widget_type}
-                row={row}
-                changesAvailable={widgets.changes_available}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-xs text-base-content/60">
-        Share: of {num(widgets.measured_ticker_users)} measured ticker users.
-        Repeat users show “—” for windows under 7 days.
-      </p>
-    </div>
-  )
-}
-
-function WidgetTableRow({
-  row,
-  changesAvailable,
-}: {
-  row: WidgetRow
-  changesAvailable: boolean
-}) {
-  const td = 'px-3 py-2 text-right tabular-nums'
-  return (
-    <tr className="border-t border-base-300/50">
-      <td className="px-3 py-2">
-        <span className="font-medium">{row.name || row.widget_type}</span>
-        <span className="ml-2 text-xs text-base-content/55 capitalize">
-          {row.category}
-        </span>
-      </td>
-      <td className={td}>{num(row.users)}</td>
-      <td className={td}>{pct(row.share)}</td>
-      <td className={td}>{formatHours(row.user_hours)}</td>
-      <td className={td}>{formatHours(row.screen_hours)}</td>
-      <td className={td}>
-        {row.repeat_users === null ? '—' : num(row.repeat_users)}
-      </td>
-      <td className={td}>
-        {changesAvailable ? (
-          <>
-            +{num(row.added)} / −{num(row.removed)}
-          </>
-        ) : (
-          '—'
-        )}
-      </td>
-      <td className={td}>
-        {num(row.configured)} / {num(row.enabled)}
-      </td>
-      <td className={td}>
-        <DeltaBadge comparison={row.comparison} />
-      </td>
-    </tr>
   )
 }
 

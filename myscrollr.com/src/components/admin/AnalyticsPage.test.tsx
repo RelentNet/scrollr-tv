@@ -497,8 +497,9 @@ describe('DesktopContent', () => {
     expect(html).toContain('of 27 measured ticker users')
     expect(html).toContain('NFL')
     expect(html).toContain('74%')
-    expect(html).toContain('+3 / −1')
-    expect(html).toContain('25 / 22')
+    // Configuration figures are available in their focused metric view.
+    expect(html).toContain('Configuration')
+    expect(html).toContain('Find a widget')
     expect(html).toContain('href="/admin/versions"')
   })
 

@@ -20,8 +20,7 @@ export default function SettingsPage() {
   const settings = useReport(
     useCallback(
       (signal: AbortSignal) => {
-        void signal
-        return adminApi.settings(getToken)
+        return adminApi.settings(getToken, signal)
       },
       [getToken],
     ),
@@ -175,7 +174,7 @@ function StaffToggle({
           />
         </button>
       </div>
-      <p className="mt-4 flex flex-wrap items-center gap-2 text-xs text-base-content/60">
+      <p className="mt-4 flex flex-wrap items-center gap-2 text-xs text-base-content/60 [overflow-wrap:anywhere]">
         {saving && <Loader2 size={12} className="animate-spin" aria-hidden />}
         <span>
           {on ? 'On' : 'Off'}

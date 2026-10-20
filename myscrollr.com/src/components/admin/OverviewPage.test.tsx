@@ -34,6 +34,25 @@ function text(html: string): string {
 }
 
 describe('OverviewContent', () => {
+  it('labels retained presence as stale and offers retry after a poll fails', async () => {
+    const body = text(
+      await render({
+        presence: {
+          ...loaded(presence),
+          error: 'Connection interrupted',
+          retry: () => {},
+        },
+        initialOpen: 'right_now',
+      }),
+    )
+    expect(body).toContain(
+      '12people had Scrollr open at the last successful check.',
+    )
+    expect(body).toContain('Update failed')
+    expect(body).toContain('Connection interrupted')
+    expect(body).toContain('Retry')
+    expect(body).not.toContain('open right now')
+  })
   it('leads with the two headline lines and the five sentences', async () => {
     const body = text(await render())
     expect(body).toContain('Running fine.')
@@ -44,7 +63,27 @@ describe('OverviewContent', () => {
     expect(body).toContain('2customers pay.')
     expect(body).toContain('1person signed up in the last 24 hours,')
     expect(body).toContain('Scores, prices, markets and news are up to date,')
-    expect(body).toContain('all within the last few minutes.')
+    expect(body).toContain('within their expected update windows.')
+  })
+
+  it('does not give an all-clear when its reports fail', async () => {
+    const body = text(
+      await render({
+        presence: failed('Presence failed'),
+        support: failed('Support failed'),
+        revenue: failed('Revenue failed'),
+        service: failed('Service failed'),
+        initialOpen: 'feeds',
+      }),
+    )
+    expect(body).toContain('Feed health is unknown.')
+    expect(body).toContain('Some checks are unavailable.')
+    expect(body).toContain('The live count is unavailable.')
+    expect(body).toContain('Feed health is not available yet.')
+    expect(body).toContain('Service failed')
+    expect(body).toContain('Retry')
+    expect(body).not.toContain('Nothing needs you.')
+    expect(body).not.toContain('are up to date')
   })
 
   it('shows one verdict per row', async () => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useBlocker } from '@tanstack/react-router'
 import {
   AlertTriangle,
   ArrowDown,
@@ -31,6 +32,8 @@ import type {
   QueueSort,
   SupportQueue,
 } from '@/api/admin'
+import type { CaseEdits } from '@/components/admin/CaseActions'
+import type { SupportSearch } from '@/lib/adminSearch'
 import { adminApi, subscribeToSupportEvents } from '@/api/admin'
 import CaseActions from '@/components/admin/CaseActions'
 import {
@@ -49,6 +52,7 @@ import {
   relativeAge,
 } from '@/lib/supportConsole'
 import { useGetToken } from '@/hooks/useGetToken'
+import { parseSupportSearch } from '@/lib/adminSearch'
 
 /**
  * The Support section, rebuilt around people (REL-266).
@@ -168,7 +172,7 @@ function Pill({
   }
   return (
     <span
-      className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold ${tones[tone]}`}
+      className={`max-w-full shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold [overflow-wrap:anywhere] ${tones[tone]}`}
     >
       {children}
     </span>
@@ -206,8 +210,19 @@ function HoldBanner({
   const [, tick] = useState(0)
   useEffect(() => {
     if (!hold.remaining_seconds.available || hold.expired) return
-    const t = setInterval(() => tick((n) => n + 1), 1000)
-    return () => clearInterval(t)
+    let timer: ReturnType<typeof setInterval> | undefined
+    const resume = () => {
+      clearInterval(timer)
+      if (document.hidden) return
+      tick((n) => n + 1)
+      timer = setInterval(() => tick((n) => n + 1), 1000)
+    }
+    resume()
+    document.addEventListener('visibilitychange', resume)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', resume)
+    }
   }, [hold])
 
   const live = holdCountdown(hold)
@@ -643,7 +658,12 @@ function TheEvidence({ detail }: { detail: CaseDetail }) {
 function useCase(ticket: string | null, reloadKey: number) {
   const getToken = useGetToken()
   const [detail, setDetail] = useState<CaseDetail | null>(null)
+  const currentDetail = useRef(detail)
+  currentDetail.current = detail
   const [error, setError] = useState<string | null>(null)
+  const activeTicket = useRef(ticket)
+  activeTicket.current = ticket
+  const revision = useRef(0)
 
   // The panel is NOT blanked on a re-read — only on a change of ticket — so a
   // reply landing while you are reading does not throw the page away.
@@ -652,13 +672,18 @@ function useCase(ticket: string | null, reloadKey: number) {
   useEffect(() => {
     if (!ticket) return
     let cancelled = false
+    const controller = new AbortController()
+    const readRevision = revision.current
     setError(null)
     adminApi
-      .supportCase(getToken, ticket)
-      .then((res) => !cancelled && setDetail(res))
+      .supportCase(getToken, ticket, controller.signal)
+      .then((res) => {
+        if (!cancelled && readRevision === revision.current) setDetail(res)
+      })
       .catch(
         (err: unknown) =>
           !cancelled &&
+          readRevision === revision.current &&
           setError(
             err instanceof Error
               ? err.message
@@ -667,10 +692,32 @@ function useCase(ticket: string | null, reloadKey: number) {
       )
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [getToken, ticket, reloadKey])
 
-  return { detail, error, setDetail }
+  const acceptCase = useCallback((next: CaseDetail, expectedDraft?: number) => {
+    if (next.ticket_number !== activeTicket.current) return
+    if (currentDetail.current?.draft?.id !== expectedDraft) return
+    const current = currentDetail.current
+    if (current && Date.parse(next.updated_at) < Date.parse(current.updated_at))
+      return
+    if (
+      current?.draft &&
+      current.draft.status !== 'pending' &&
+      next.draft?.status === 'pending'
+    )
+      return
+    revision.current += 1
+    setDetail(next)
+    setError(null)
+  }, [])
+
+  return {
+    detail: detail?.ticket_number === ticket ? detail : null,
+    error,
+    setDetail: acceptCase,
+  }
 }
 
 /**
@@ -717,7 +764,7 @@ function PersonHeader({
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
           <h1
-            className={`text-[22px] leading-tight font-extrabold tracking-[-0.02em] ${
+            className={`min-w-0 max-w-full text-[22px] leading-tight font-extrabold tracking-[-0.02em] [overflow-wrap:anywhere] ${
               who.known ? '' : 'text-base-content/75 italic'
             }`}
           >
@@ -755,7 +802,7 @@ function PersonHeader({
       </div>
 
       {detail && (
-        <div className="flex shrink-0 flex-wrap gap-2">
+        <div className="flex min-w-0 max-w-full flex-wrap gap-2">
           {chips.map((chip, i) => (
             <Pill key={chip} tone={i === 1 && behind ? 'behind' : 'neutral'}>
               {chip}
@@ -780,7 +827,7 @@ function CaseConversation({ detail }: { detail: CaseDetail }) {
   return (
     <section className="flex flex-col gap-3.5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 className="text-base font-bold">
+        <h2 className="min-w-0 max-w-full text-base font-bold [overflow-wrap:anywhere]">
           {detail.subject || '(no subject)'}
         </h2>
         <span className="font-mono text-xs text-base-content/45">
@@ -914,13 +961,22 @@ function AboutThem({ detail }: { detail: CaseDetail }) {
 function CaseWorkbench({
   detail,
   onCase,
+  edits,
+  onEdit,
 }: {
   detail: CaseDetail
   onCase: (next: CaseDetail) => void
+  edits: CaseEdits
+  onEdit: (patch: Partial<CaseEdits>) => void
 }) {
   return (
     <div className="flex flex-col gap-6">
-      <CaseActions detail={detail} onCase={onCase} />
+      <CaseActions
+        detail={detail}
+        onCase={onCase}
+        edits={edits}
+        onEdit={onEdit}
+      />
 
       <div className="flex flex-col">
         <Disclosure label="Why it decided this">
@@ -1024,10 +1080,12 @@ function OtherTickets({
 
 /** The shared shape of a queue card, so a person and a ticket cannot drift. */
 function QueueCard({
+  rowKey,
   active,
   onSelect,
   children,
 }: {
+  rowKey: string
   active: boolean
   onSelect: () => void
   children: React.ReactNode
@@ -1035,6 +1093,7 @@ function QueueCard({
   return (
     <button
       type="button"
+      data-support-row={rowKey}
       onClick={onSelect}
       aria-current={active ? 'true' : undefined}
       /* A <button> centres its text; the card is three left-aligned lines. */
@@ -1061,7 +1120,11 @@ function PersonCard({
   const who = personTitle(person)
   const badge = planBadge(person)
   return (
-    <QueueCard active={active} onSelect={onSelect}>
+    <QueueCard
+      rowKey={`person:${person.key}`}
+      active={active}
+      onSelect={onSelect}
+    >
       <div className="flex items-baseline justify-between gap-2">
         <span
           className={`truncate text-sm font-bold ${who.known ? '' : 'text-base-content/75 italic'}`}
@@ -1115,7 +1178,11 @@ function TicketCard({
   const countdown = holdCountdown(row.hold)
   const badge = fixBadge(row.fix ?? null)
   return (
-    <QueueCard active={active} onSelect={onSelect}>
+    <QueueCard
+      rowKey={`ticket:${row.ticket_number}`}
+      active={active}
+      onSelect={onSelect}
+    >
       <div className="flex items-baseline justify-between gap-2">
         <span className="truncate text-sm font-bold">
           {row.name || row.user_email || 'Requester unknown'}
@@ -1258,12 +1325,12 @@ function StatusPills({
         className={`${pill} ${live ? 'bg-success/12 text-success' : 'bg-base-200 text-base-content/60'}`}
         title={
           live
-            ? 'Live — holds and replies appear here without a refresh.'
+            ? 'Connected to support events. The queue and open case refresh after connecting.'
             : 'Not connected to the live stream; this page is showing what it last read.'
         }
       >
         <Radio size={12} aria-hidden />
-        {live ? 'live' : 'not connected'}
+        {live ? 'connected' : 'not connected'}
       </span>
 
       {autosend &&
@@ -1330,23 +1397,49 @@ function useThreePane() {
 
 const QUEUE_REFETCH_MS = 400
 
-export default function SupportPage() {
+export default function SupportPage({
+  search: routeSearch,
+  onSearchChange,
+}: {
+  search?: SupportSearch
+  onSearchChange?: (patch: Partial<SupportSearch>, replace?: boolean) => void
+} = {}) {
   const getToken = useGetToken()
-  const [sort, setSort] = useState<QueueSort>('last_wrote')
-  const [dir, setDir] = useState<QueueDir>('desc')
-  const [rowsMode, setRowsMode] = useState<QueueRowsMode>('person')
-  const [search, setSearch] = useState('')
-  const [debounced, setDebounced] = useState('')
+  const [localSearch, setLocalSearch] = useState(() => parseSupportSearch({}))
+  const selection = routeSearch ?? localSearch
+  const {
+    sort,
+    dir,
+    rows: rowsMode,
+    q: search,
+    resolved: showResolved,
+  } = selection
+  const selectedPerson = selection.person ?? null
+  const selectedTicket = selection.ticket ?? null
+  const updateSearch = (patch: Partial<SupportSearch>, replace = false) => {
+    if (onSearchChange) onSearchChange(patch, replace)
+    else setLocalSearch((current) => ({ ...current, ...patch }))
+  }
+  const [debounced, setDebounced] = useState(search)
 
   const [queue, setQueue] = useState<SupportQueue | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [selectedPerson, setSelectedPerson] = useState<string | null>(null)
-  const [selectedTicket, setSelectedTicket] = useState<string | null>(null)
   const [live, setLive] = useState(false)
   const [queueKey, setQueueKey] = useState(0)
   const [caseKey, setCaseKey] = useState(0)
   const [switching, setSwitching] = useState(false)
-  const [showResolved, setShowResolved] = useState(false)
+  // Private reply text stays in this page's memory, never browser storage.
+  const [edits, setEdits] = useState<Record<string, Partial<CaseEdits>>>({})
+  const hasEdits = Object.keys(edits).length > 0
+  useBlocker({
+    shouldBlockFn: ({ current, next }) =>
+      hasEdits &&
+      current.pathname !== next.pathname &&
+      !window.confirm(
+        'Leave Support and discard your unsent edits? Your edits are kept when you switch tickets here.',
+      ),
+    enableBeforeUnload: hasEdits,
+  })
   const wide = useThreePane()
 
   // The search is a server round trip, so it waits for a pause in typing
@@ -1358,9 +1451,18 @@ export default function SupportPage() {
 
   const load = useCallback(() => {
     let cancelled = false
+    const controller = new AbortController()
     adminApi
-      .supportQueue(getToken, { sort, dir, rows: rowsMode, q: debounced })
-      .then((res) => !cancelled && setQueue(res))
+      .supportQueue(
+        getToken,
+        { sort, dir, rows: rowsMode, q: debounced },
+        controller.signal,
+      )
+      .then((res) => {
+        if (cancelled) return
+        setQueue(res)
+        setError(null)
+      })
       .catch(
         (err: unknown) =>
           !cancelled &&
@@ -1372,6 +1474,7 @@ export default function SupportPage() {
       )
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [getToken, sort, dir, rowsMode, debounced, queueKey])
 
@@ -1395,9 +1498,25 @@ export default function SupportPage() {
       : []
 
   useEffect(() => {
-    // A burst of events is one refetch after it settles: `load`'s cleanup
-    // already discards a superseded fetch, so only the trailing edge needs a timer.
+    // Keep the stream connected, but batch reads and defer them while hidden.
+    // Returning to the tab reconciles both reports, including missed events.
     let timer: ReturnType<typeof setTimeout> | undefined
+    let queueDirty = false
+    let caseDirty = false
+    const flush = () => {
+      clearTimeout(timer)
+      if (document.hidden) return
+      if (queueDirty) setQueueKey((n) => n + 1)
+      if (caseDirty) setCaseKey((n) => n + 1)
+      queueDirty = false
+      caseDirty = false
+    }
+    const reconcile = () => {
+      queueDirty = true
+      caseDirty = true
+      flush()
+    }
+    document.addEventListener('visibilitychange', reconcile)
     const unsubscribe = subscribeToSupportEvents(
       getToken,
       (event) => {
@@ -1405,19 +1524,24 @@ export default function SupportPage() {
         // open case is re-read only when the event is about something on
         // screen, or about the pipeline switch, which changes what every
         // countdown means.
+        queueDirty = true
         clearTimeout(timer)
-        timer = setTimeout(() => setQueueKey((n) => n + 1), QUEUE_REFETCH_MS)
         if (
           !event.ticket_number ||
           openRef.current.includes(event.ticket_number)
         ) {
-          setCaseKey((n) => n + 1)
+          caseDirty = true
         }
+        if (!document.hidden) timer = setTimeout(flush, QUEUE_REFETCH_MS)
       },
-      setLive,
+      (connected) => {
+        setLive(connected)
+        if (connected) reconcile()
+      },
     )
     return () => {
       clearTimeout(timer)
+      document.removeEventListener('visibilitychange', reconcile)
       unsubscribe()
     }
   }, [getToken])
@@ -1430,7 +1554,10 @@ export default function SupportPage() {
         getToken,
         !queue.autosend.paused,
       )
-      setQueue({ ...queue, autosend: next })
+      setQueue((current) =>
+        current ? { ...current, autosend: next } : current,
+      )
+      setError(null)
       setQueueKey((n) => n + 1)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'The switch did not move.')
@@ -1488,41 +1615,141 @@ export default function SupportPage() {
   const { detail, error: caseError, setDetail } = useCase(activeTicket, caseKey)
 
   const selected = rowsMode === 'person' ? selectedPerson : selectedTicket
+  const selectionKey = selected ? `${rowsMode}:${selected}` : null
+  const previousSelection = useRef<string | null>(null)
+  const queuePane = useRef<HTMLDivElement>(null)
+  const conversationPane = useRef<HTMLDivElement>(null)
+  const backButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!queue || previousSelection.current === selectionKey) return
+    const previous = previousSelection.current
+    previousSelection.current = selectionKey
+    if (selectionKey) {
+      const target = window.matchMedia('(min-width: 768px)').matches
+        ? conversationPane.current
+        : backButton.current
+      target?.focus()
+    } else if (previous) {
+      const origin = Array.from(
+        queuePane.current?.querySelectorAll<HTMLButtonElement>(
+          '[data-support-row]',
+        ) ?? [],
+      ).find((button) => button.dataset.supportRow === previous)
+      const target =
+        origin ??
+        queuePane.current?.querySelector<HTMLInputElement>(
+          'input[type="search"]',
+        )
+      target?.focus()
+    }
+  }, [queue, selectionKey])
   const back = () => {
-    setSelectedPerson(null)
-    setSelectedTicket(null)
+    updateSearch({ person: undefined, ticket: undefined })
   }
   const needsYou = queue?.counts.needs_you ?? 0
   const waiting = queue?.counts.waiting ?? 0
   const resolved = queue?.counts.handled ?? 0
 
-  const workbench =
-    detail && !caseError ? (
-      <CaseWorkbench detail={detail} onCase={setDetail} />
-    ) : null
+  const editKey = detail
+    ? `${detail.ticket_number}:${detail.draft?.id ?? 'none'}`
+    : ''
+  const currentEdits: CaseEdits = {
+    body: detail?.draft?.body ?? '',
+    question: detail?.draft?.ask_user_for ?? '',
+    issueKey: '',
+    ...edits[editKey],
+  }
+  const workbench = detail ? (
+    <CaseWorkbench
+      key={editKey}
+      detail={detail}
+      onCase={(next) => {
+        setDetail(next, detail.draft?.id)
+        const key = `${next.ticket_number}:${next.draft?.id ?? 'none'}`
+        setEdits((current) => {
+          const remaining = { ...current }
+          if (next.draft?.status !== 'pending') {
+            delete remaining[key]
+          } else if (
+            key in current &&
+            current[key].issueKey === next.linear_issue_key
+          ) {
+            remaining[key] = { ...current[key] }
+            delete remaining[key].issueKey
+            if (Object.keys(remaining[key]).length === 0) delete remaining[key]
+          }
+          return remaining
+        })
+      }}
+      edits={currentEdits}
+      onEdit={(patch) =>
+        setEdits((current) => {
+          const changed = { ...current[editKey], ...patch }
+          if (changed.body === detail.draft?.body) delete changed.body
+          if (changed.question === detail.draft?.ask_user_for)
+            delete changed.question
+          if (changed.issueKey === '') delete changed.issueKey
+          const next = { ...current, [editKey]: changed }
+          if (Object.keys(changed).length === 0) delete next[editKey]
+          return next
+        })
+      }
+    />
+  ) : null
 
   return (
-    /* The console shell's <main> is full-bleed and 48px below the bar. From
+    /* The console workspace is full-bleed and 48px below the bar. From
        768 up this page is exactly that tall and each pane scrolls on its own,
        so the window never scrolls. Below it the mobile nav adds a row of its
        own and the page is an ordinary scrolling column. */
     <div className="flex flex-col md:h-[calc(100dvh-48px)]">
-      <div className="flex h-11 shrink-0 flex-wrap items-baseline gap-x-2.5 overflow-hidden border-b border-hairline px-4">
+      <div className="flex min-h-11 shrink-0 flex-wrap items-baseline gap-x-2.5 border-b border-hairline px-4 py-2">
         <h1 className="self-center text-base font-extrabold tracking-[-0.01em]">
           Support
         </h1>
-        <span className="self-center text-[13px] font-bold text-error">
-          {needsYou === 1 ? '1 needs you' : `${needsYou} need you`}
-        </span>
-        <span className="self-center text-[13px] text-base-content/45">
-          · {waiting} waiting on them · {resolved} resolved
-        </span>
+        {queue ? (
+          <>
+            <span
+              className={`self-center text-[13px] font-bold ${needsYou > 0 ? 'text-error' : 'text-base-content/65'}`}
+            >
+              {needsYou === 1 ? '1 needs you' : `${needsYou} need you`}
+            </span>
+            <span className="self-center text-[13px] text-base-content/45">
+              · {waiting} waiting on them · {resolved} resolved
+            </span>
+          </>
+        ) : (
+          <span className="self-center text-[13px] text-base-content/45">
+            {error ? 'Queue unavailable' : 'Loading queue…'}
+          </span>
+        )}
       </div>
 
-      {error && <p className="px-4 py-3 text-sm text-error">{error}</p>}
+      {error && (
+        <div
+          role="alert"
+          className="flex items-center gap-3 px-4 py-3 text-sm text-error"
+        >
+          <p>
+            {queue ? 'Showing the last queue update. ' : ''}
+            {error}
+          </p>
+          <button
+            type="button"
+            className="cursor-pointer font-semibold underline"
+            onClick={() => setQueueKey((n) => n + 1)}
+          >
+            Retry queue
+          </button>
+        </div>
+      )}
       {!queue && !error && (
         <div className="p-4">
-          <Loader2 className="size-5 animate-spin text-base-content/40" />
+          <Loader2
+            role="status"
+            aria-label="Loading support queue"
+            className="size-5 animate-spin text-base-content/40"
+          />
         </div>
       )}
 
@@ -1531,6 +1758,7 @@ export default function SupportPage() {
           {/* Under 768px the queue IS the page; picking someone pushes their
               view over it and the back control returns. */}
           <div
+            ref={queuePane}
             className={`min-w-0 border-hairline md:w-[320px] md:shrink-0 md:overflow-y-auto md:border-r min-[1440px]:w-[380px] ${
               selected ? 'hidden md:block' : 'block'
             }`}
@@ -1541,13 +1769,16 @@ export default function SupportPage() {
                 dir={dir}
                 rowsMode={rowsMode}
                 search={search}
-                onSort={(s) => setSort(s)}
-                onDir={(d) => setDir(d)}
-                onRowsMode={(m) => {
-                  setRowsMode(m)
-                  back()
-                }}
-                onSearch={setSearch}
+                onSort={(nextSort) => updateSearch({ sort: nextSort })}
+                onDir={(nextDir) => updateSearch({ dir: nextDir })}
+                onRowsMode={(nextRows) =>
+                  updateSearch({
+                    rows: nextRows,
+                    person: undefined,
+                    ticket: undefined,
+                  })
+                }
+                onSearch={(q) => updateSearch({ q }, true)}
               />
             </div>
 
@@ -1584,7 +1815,9 @@ export default function SupportPage() {
                       {section.key === 'resolved' && (
                         <button
                           type="button"
-                          onClick={() => setShowResolved((v) => !v)}
+                          onClick={() =>
+                            updateSearch({ resolved: !showResolved })
+                          }
                           aria-expanded={showResolved}
                           aria-label="Show resolved"
                           className="cursor-pointer text-base-content/40 hover:text-base-content"
@@ -1615,8 +1848,10 @@ export default function SupportPage() {
                               person={p}
                               active={selectedPerson === p.key}
                               onSelect={() => {
-                                setSelectedPerson(p.key)
-                                setSelectedTicket(null)
+                                updateSearch({
+                                  person: p.key,
+                                  ticket: undefined,
+                                })
                               }}
                             />
                           ))
@@ -1627,8 +1862,10 @@ export default function SupportPage() {
                               row={r}
                               active={selectedTicket === r.ticket_number}
                               onSelect={() => {
-                                setSelectedTicket(r.ticket_number)
-                                setSelectedPerson(null)
+                                updateSearch({
+                                  ticket: r.ticket_number,
+                                  person: undefined,
+                                })
                               }}
                             />
                           ))
@@ -1643,12 +1880,17 @@ export default function SupportPage() {
 
           {/* The conversation. */}
           <div
-            className={`min-w-0 flex-1 md:overflow-y-auto ${
+            ref={conversationPane}
+            role="region"
+            aria-label="Support conversation"
+            tabIndex={-1}
+            className={`min-w-0 flex-1 outline-none md:overflow-y-auto ${
               selected ? 'block' : 'hidden md:block'
             }`}
           >
             {selected && (
               <button
+                ref={backButton}
                 type="button"
                 onClick={back}
                 className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 px-4 text-sm font-medium text-base-content/70 hover:text-base-content md:hidden"
@@ -1666,17 +1908,40 @@ export default function SupportPage() {
                 </p>
               </div>
             ) : (
-              <div className="flex flex-col gap-5 px-5 py-5 min-[1440px]:px-8">
+              <div className="flex flex-col gap-5 px-5 py-5 [overflow-wrap:anywhere] min-[1440px]:px-8">
                 <PersonHeader person={person} rows={mine} detail={detail} />
-                {caseError && <p className="text-sm text-error">{caseError}</p>}
+                {caseError && (
+                  <div
+                    role="alert"
+                    className="flex items-center gap-3 text-sm text-error"
+                  >
+                    <p>
+                      {detail
+                        ? 'Showing the last case update. Your edits are kept. '
+                        : ''}
+                      {caseError}
+                    </p>
+                    <button
+                      type="button"
+                      className="cursor-pointer font-semibold underline"
+                      onClick={() => setCaseKey((n) => n + 1)}
+                    >
+                      Retry case
+                    </button>
+                  </div>
+                )}
                 {!detail && !caseError && activeTicket && (
-                  <Loader2 className="size-5 animate-spin text-base-content/40" />
+                  <Loader2
+                    role="status"
+                    aria-label="Loading support case"
+                    className="size-5 animate-spin text-base-content/40"
+                  />
                 )}
                 {detail && <CaseConversation detail={detail} />}
                 <OtherTickets
                   rows={mine}
                   active={activeTicket}
-                  onSelect={setSelectedTicket}
+                  onSelect={(ticket) => updateSearch({ ticket })}
                 />
                 {/* Under 1440 the right pane's content lands here, in order. */}
                 {!wide && workbench}

@@ -1,5 +1,9 @@
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
+import { SignupTrend } from './SignupTrend'
+import { AnalyticsTrend } from './AnalyticsTrend'
+import { ReportBoundary } from './ReportBoundary'
+import './analytics.css'
 import {
   Bars,
   Big,
@@ -36,7 +40,6 @@ import type {
 import type {
   Audience,
   BreakdownRow,
-  Bucket,
   DesktopFilterQuery,
   DesktopUsage,
   Earnings,
@@ -85,9 +88,9 @@ import {
 } from '@/lib/overviewVerdicts'
 
 /**
- * Analytics (SCROLLR-220): four questions on one long page.
+ * Analytics: four focused views with their own evidence and controls.
  *
- * Each section answers the question in its eyebrow in one sentence, with the
+ * Each section answers its heading's question in one sentence, with the
  * number that answers it in bold, a chart of the same figure over the period,
  * and the facts that qualify it. Everything the page used to show is still
  * here, one click away under `More detail` — nothing was deleted, it was
@@ -98,8 +101,8 @@ import {
  * never written when `comparable` is false, and every verdict comes from
  * `overviewVerdicts.ts` and nowhere else.
  *
- * `?view=` used to pick a panel; it now names a section to scroll to, so the
- * Overview's links keep working.
+ * `?view=` selects the visible workspace. Hidden views retain their controls,
+ * while deep links from Overview continue to select the same named view.
  */
 
 const APPLICATIONS = [
@@ -140,6 +143,10 @@ export function signupDays(period: Period): 7 | 30 {
 // ── Page ──────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
+  return <AnalyticsWorkspace />
+}
+
+function AnalyticsWorkspace() {
   const getToken = useGetToken()
   const search = useSearch({ from: '/admin/analytics' })
   const navigate = useNavigate({ from: '/admin/analytics' })
@@ -155,217 +162,320 @@ export default function AnalyticsPage() {
   const audience = useReport(
     useCallback(
       (signal: AbortSignal) => {
-        void refresh
         return loadAudience(getToken, period, signal)
       },
-      [getToken, period, refresh],
+      [getToken, period],
     ),
+    period,
   )
   const website = useReport(
     useCallback(
       (signal: AbortSignal) => {
-        void refresh
         return loadWebsite(getToken, period, signal)
       },
-      [getToken, period, refresh],
+      [getToken, period],
     ),
+    period,
   )
   const desktop = useReport(
     useCallback(
       (signal: AbortSignal) => {
-        void refresh
         return loadDesktopUsage(getToken, period, { os, version, plan }, signal)
       },
-      [getToken, os, period, plan, refresh, version],
+      [getToken, os, period, plan, version],
     ),
+    `${period}:${os ?? ''}:${version ?? ''}:${plan ?? ''}`,
   )
   const revenue = useReport(
     useCallback(
       (signal: AbortSignal) => {
-        void refresh
         return loadRevenue(getToken, period, signal)
       },
-      [getToken, period, refresh],
+      [getToken, period],
     ),
+    period,
   )
   const support = useReport(
     useCallback(
       (signal: AbortSignal) => {
-        void refresh
         return loadSupportSummary(getToken, period, signal)
       },
-      [getToken, period, refresh],
+      [getToken, period],
     ),
+    period,
   )
   const week1Return = useReport(
     useCallback(
       (signal: AbortSignal) => {
-        void refresh
         return loadWeek1Return(getToken, signal)
       },
-      [getToken, refresh],
+      [getToken],
     ),
   )
 
-  // `?view=` names a place on the page now rather than a panel to swap in, so
-  // the Overview's deep links keep landing where they always did.
-  useEffect(() => {
-    document.getElementById(view)?.scrollIntoView({ block: 'start' })
-  }, [view])
-
   const sectionVerdicts: Record<AnalyticsView, Verdict> = {
-    growth: growthVerdict(audience.data),
-    desktop: desktopVerdict(desktop.data),
-    revenue: revenueVerdict(revenue.data),
-    support: supportVerdict(support.data),
+    growth: reportVerdict(() => growthVerdict(audience.data)),
+    desktop: reportVerdict(() => desktopVerdict(desktop.data)),
+    revenue: reportVerdict(() => revenueVerdict(revenue.data)),
+    support: reportVerdict(() => supportVerdict(support.data)),
   }
 
   return (
     <PageFrame>
-      <div className="flex flex-col gap-10 lg:flex-row lg:gap-12">
+      <div className="analytics-report">
+        <header className="analytics-header">
+          <div>
+            <h1>Analytics</h1>
+            <p>How Scrollr is growing, and how people use it.</p>
+          </div>
+          <span className="analytics-window">{periodLabel(period)}</span>
+        </header>
         <SectionNav
           view={view}
           period={period}
           verdicts={sectionVerdicts}
-          onView={(next) => setSearch({ view: next })}
+          refreshing={
+            view === 'growth'
+              ? [audience, website, desktop, week1Return].some((r) => r.loading)
+              : { desktop, revenue, support }[view].loading
+          }
+          onView={(next) => {
+            void setSearch({ view: next })
+          }}
           onPeriod={(next) => setSearch({ period: next })}
-          onRefresh={() => setRefresh((n) => n + 1)}
+          onRefresh={() => {
+            if (view === 'growth') {
+              audience.retry()
+              website.retry()
+              desktop.retry()
+              week1Return.retry()
+              setRefresh((n) => n + 1)
+            } else if (view === 'desktop') desktop.retry()
+            else if (view === 'revenue') revenue.retry()
+            else support.retry()
+          }}
         />
-        <div className="flex min-w-0 grow flex-col gap-14">
-          <header className="flex flex-wrap items-end justify-between gap-4">
-            <h1 className="text-[32px] leading-none font-extrabold tracking-[-0.03em]">
-              Analytics
-            </h1>
-            <PageStamp />
-          </header>
-          <Week1ReturnContent report={week1Return} />
-          <GrowthContent
-            period={period}
-            verdict={sectionVerdicts.growth}
-            audience={audience}
-            website={website}
-            desktop={desktop}
-          />
-          <DesktopContent
-            period={period}
-            verdict={sectionVerdicts.desktop}
-            desktop={desktop}
-            filters={{ os, version, plan }}
-            onFilterChange={(next) => setSearch(next)}
-          />
-          <RevenueContent
-            period={period}
-            verdict={sectionVerdicts.revenue}
-            revenue={revenue}
-          />
-          <SupportContent
-            period={period}
-            verdict={sectionVerdicts.support}
-            support={support}
-          />
-          <SignupDiagnosticsSection period={period} refresh={refresh} />
+        <div className="analytics-sections">
+          <div hidden={view !== 'growth'}>
+            <ReportBoundary
+              label="Growth"
+              resetKeys={[audience.data, website.data, desktop.data]}
+              onRetry={() => {
+                audience.retry()
+                website.retry()
+                desktop.retry()
+              }}
+            >
+              <GrowthContent
+                period={period}
+                verdict={sectionVerdicts.growth}
+                audience={audience}
+                website={website}
+                desktop={desktop}
+              />
+            </ReportBoundary>
+            <ReportBoundary
+              label="Week-1 return"
+              resetKeys={[week1Return.data]}
+              onRetry={week1Return.retry}
+            >
+              <Week1ReturnContent report={week1Return} />
+            </ReportBoundary>
+            <SignupDiagnosticsSection period={period} refresh={refresh} />
+          </div>
+          <div hidden={view !== 'desktop'}>
+            <ReportBoundary
+              label="Desktop usage"
+              resetKeys={[desktop.data]}
+              onRetry={desktop.retry}
+            >
+              <DesktopContent
+                period={period}
+                verdict={sectionVerdicts.desktop}
+                desktop={desktop}
+                filters={{ os, version, plan }}
+                onFilterChange={(next) => setSearch(next)}
+              />
+            </ReportBoundary>
+          </div>
+          <div hidden={view !== 'revenue'}>
+            <ReportBoundary
+              label="Revenue"
+              resetKeys={[revenue.data]}
+              onRetry={revenue.retry}
+            >
+              <RevenueContent
+                period={period}
+                verdict={sectionVerdicts.revenue}
+                revenue={revenue}
+              />
+            </ReportBoundary>
+          </div>
+          <div hidden={view !== 'support'}>
+            <ReportBoundary
+              label="Support"
+              resetKeys={[support.data]}
+              onRetry={support.retry}
+            >
+              <SupportContent
+                period={period}
+                verdict={sectionVerdicts.support}
+                support={support}
+              />
+            </ReportBoundary>
+          </div>
         </div>
       </div>
     </PageFrame>
   )
 }
 
-/** The page's own "as of", which is the moment it was drawn. */
-function PageStamp() {
-  return (
-    <p className="text-sm text-base-content/50">
-      {new Date().toLocaleString()}
-    </p>
-  )
-}
-
 /**
  * Week-1 return (SCROLLR-247): the News + first run phase's exit metric, on
- * its own at the top of the page rather than folded into Growth — it decides
- * whether the phase is done, everything else is context.
+ * beside the growth report, with its own time window and data source.
  *
  * No verdict here: `overviewVerdicts.ts` is untouched by design. A cohort
  * younger than 7 days never renders a rate or a returned count, only its
  * (already known) signup count — "not yet available", never 0.
  */
-function Week1ReturnContent({ report }: { report: Report<Week1ReturnReport> }) {
+export function Week1ReturnContent({
+  report,
+}: {
+  report: Report<Week1ReturnReport>
+}) {
   return (
-    <Section
+    <section
       id="week1-return"
-      title="Week-1 return"
-      lede="Of new desktop signups, how many came back on their own in the week after signing up? The phase's exit metric."
+      className="analytics-retention"
+      aria-labelledby="week1-return-heading"
     >
+      <div className="analytics-retention-intro">
+        <span className="analytics-scope">
+          Weekly signup cohorts · independent of time window
+        </span>
+        <h2 id="week1-return-heading">Do new users come back?</h2>
+        <p>
+          Week-1 return tracks new desktop signups who came back on their own in
+          the following week.
+        </p>
+      </div>
       <Loaded report={report} label="week-1 return">
         {(data) => {
-          const matured = [...data.cohorts].reverse().find((c) => c.mature)
+          // The API's integer omitempty omits a measured zero return count.
+          // Only an explicit zero rate establishes zero; absent data stays unknown.
+          const cohorts = data.cohorts.map((cohort) => ({
+            ...cohort,
+            returned:
+              cohort.returned ??
+              (cohort.mature && cohort.rate_pct === 0 ? 0 : undefined),
+          }))
+          const matured = [...cohorts].reverse().find((c) => c.mature)
           return (
-            <div className="space-y-3">
-              <Card title="Week-1 return" label="Most recently matured cohort">
-                {matured ? (
-                  <>
-                    <Big>
-                      {matured.rate_pct !== undefined
-                        ? `${Math.round(matured.rate_pct)}%`
-                        : '—'}
-                    </Big>
-                    <p className="mt-1 text-sm text-base-content/60">
-                      {num(matured.returned ?? 0)} of {num(matured.signups)}{' '}
-                      returned · week of {matured.week_start}
+            <div className="analytics-retention-data">
+              <div className="analytics-retention-summary">
+                <div>
+                  <p className="analytics-scope">
+                    Most recently matured cohort
+                  </p>
+                  <strong className="analytics-return-rate">
+                    {matured?.rate_pct !== undefined
+                      ? `${Math.round(matured.rate_pct)}%`
+                      : '—'}
+                  </strong>
+                  <p>
+                    {matured
+                      ? `${matured.returned === undefined ? 'Unknown' : num(matured.returned)} of ${num(matured.signups)} returned`
+                      : 'No weekly cohort has matured yet.'}
+                  </p>
+                  {matured && (
+                    <p className="analytics-scope">
+                      Week of {matured.week_start}
                     </p>
-                  </>
-                ) : (
-                  <Unmeasurable note="No weekly cohort has matured yet — check back once the most recent cohort's day 7 has passed." />
-                )}
-              </Card>
-              <div className="overflow-x-auto rounded-xl ring-1 ring-base-300/60">
-                <table className="w-full text-sm">
-                  <thead className="bg-base-200/40 text-xs font-semibold tracking-wide text-base-content/60 uppercase">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Week</th>
-                      <th className="px-3 py-2 text-right">Signups</th>
-                      <th className="px-3 py-2 text-right">Returned</th>
-                      <th className="px-3 py-2 text-right">Rate</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.cohorts.map((cohort) => (
-                      <tr
-                        key={cohort.week_start}
-                        className="border-t border-base-300/40"
+                  )}
+                </div>
+                <div
+                  className="analytics-cohort-bars"
+                  aria-label="Weekly cohort return rates"
+                >
+                  {cohorts.map((cohort) => (
+                    <div key={cohort.week_start}>
+                      <span>
+                        {cohort.mature && cohort.rate_pct !== undefined
+                          ? `${Math.round(cohort.rate_pct)}%`
+                          : cohort.mature
+                            ? 'Unavailable'
+                            : 'Pending'}
+                      </span>
+                      <div
+                        className="analytics-cohort-track"
+                        aria-hidden="true"
                       >
-                        <td className="px-3 py-2">
-                          {cohort.week_start} – {cohort.week_end}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {num(cohort.signups)}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {cohort.mature ? num(cohort.returned ?? 0) : '—'}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {cohort.mature && cohort.rate_pct !== undefined
-                            ? `${Math.round(cohort.rate_pct)}%`
-                            : 'Not yet available'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        <span
+                          style={{
+                            height:
+                              cohort.mature && cohort.rate_pct !== undefined
+                                ? `${cohort.rate_pct}%`
+                                : '0%',
+                          }}
+                        />
+                      </div>
+                      <span>
+                        {cohort.week_start.slice(5).replace('-', '/')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
+              <details className="analytics-cohort-detail">
+                <summary>Explore weekly cohorts</summary>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr>
+                        <th scope="col">Week (UTC)</th>
+                        <th scope="col">Signups</th>
+                        <th scope="col">Returned</th>
+                        <th scope="col">Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cohorts.map((cohort) => (
+                        <tr key={cohort.week_start}>
+                          <th scope="row">
+                            {cohort.week_start} – {cohort.week_end}
+                          </th>
+                          <td>{num(cohort.signups)}</td>
+                          <td>
+                            {cohort.mature && cohort.returned !== undefined
+                              ? num(cohort.returned)
+                              : '—'}
+                          </td>
+                          <td>
+                            {cohort.mature && cohort.rate_pct !== undefined
+                              ? `${Math.round(cohort.rate_pct)}%`
+                              : cohort.mature
+                                ? 'Unavailable'
+                                : 'Not yet available'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <DefinitionDisclosure>{data.definition}</DefinitionDisclosure>
+              </details>
               <Stamp at={data.generated_at} />
-              <DefinitionDisclosure>{data.definition}</DefinitionDisclosure>
             </div>
           )
         }}
       </Loaded>
-    </Section>
+    </section>
   )
 }
 
 /**
- * The left column: the four sections with their verdicts, the period, and
- * what the period means. It replaces the tab strip — every section is on the
- * page now, so this is a table of contents rather than a switch.
+ * Compact section navigation and period controls. Inactive sections stay
+ * mounted but hidden, retaining their local investigation state.
  */
 export function SectionNav({
   view,
@@ -374,6 +484,7 @@ export function SectionNav({
   onView,
   onPeriod,
   onRefresh,
+  refreshing = false,
 }: {
   view: AnalyticsView
   period: Period
@@ -381,45 +492,52 @@ export function SectionNav({
   onView: (view: AnalyticsView) => void
   onPeriod: (period: Period) => void
   onRefresh?: () => void
+  refreshing?: boolean
 }) {
   return (
-    <nav
-      aria-label="Analytics sections"
-      className="flex shrink-0 flex-col gap-1 lg:sticky lg:top-16 lg:w-[180px] lg:self-start"
-    >
-      <span className="px-2.5 pb-2 text-[11px] font-bold tracking-[0.08em] text-base-content/45 uppercase">
-        Sections
-      </span>
-      {ANALYTICS_VIEWS.map((section) => {
-        const current = section.value === view
-        const tone = VERDICT_TONE[verdicts[section.value].tone]
-        return (
-          <button
-            key={section.value}
-            type="button"
-            onClick={() => onView(section.value)}
-            aria-current={current ? 'true' : undefined}
-            className={
-              current
-                ? 'flex cursor-pointer items-center justify-between gap-2 rounded-lg bg-base-200 px-2.5 py-2 text-left text-[13px] font-semibold text-base-content focus-visible:outline-2 focus-visible:outline-primary'
-                : 'flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold text-base-content/60 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary'
-            }
-          >
-            <span className="truncate">{section.label}</span>
-            <span
-              className={`size-2 shrink-0 rounded-full ${tone.dot}`}
-              aria-hidden
-            />
-          </button>
-        )
-      })}
-      <div className="mt-4 flex flex-wrap gap-3 px-2.5">
-        <PeriodSelector value={period} onChange={onPeriod} />
-        {onRefresh && <RefreshButton onClick={onRefresh} label="Refresh" />}
+    <nav aria-label="Analytics sections" className="analytics-nav">
+      <div className="analytics-nav-links">
+        {ANALYTICS_VIEWS.map((section) => {
+          const current = section.value === view
+          const tone = VERDICT_TONE[verdicts[section.value].tone]
+          return (
+            <button
+              key={section.value}
+              type="button"
+              onClick={() => onView(section.value)}
+              aria-current={current ? 'true' : undefined}
+              className={
+                current
+                  ? 'flex cursor-pointer items-center justify-between gap-2 rounded-lg bg-base-200 px-2.5 py-2 text-left text-[13px] font-semibold text-base-content focus-visible:outline-2 focus-visible:outline-primary'
+                  : 'flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold text-base-content/60 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary'
+              }
+            >
+              <span className="truncate">{section.label}</span>
+              <span
+                className={`size-2 shrink-0 rounded-full ${tone.dot}`}
+                aria-hidden
+              />
+            </button>
+          )
+        })}
       </div>
-      <p className="px-2.5 pt-3 text-xs text-base-content/45">
-        {periodFootnote(period)}
-      </p>
+      <div className="analytics-nav-controls">
+        <PeriodSelector value={period} onChange={onPeriod} />
+        {onRefresh && (
+          <RefreshButton
+            onClick={onRefresh}
+            loading={refreshing}
+            label={refreshing ? 'Updating…' : 'Refresh'}
+          />
+        )}
+      </div>
+      <details className="analytics-nav-note">
+        <summary>Window & population</summary>
+        <p>
+          {periodFootnote(period)} Current totals and weekly cohorts keep their
+          own windows.
+        </p>
+      </details>
     </nav>
   )
 }
@@ -433,6 +551,16 @@ export function SectionNav({
  * `overviewVerdicts` then returns grey rather than judging a number it does
  * not have.
  */
+
+function reportVerdict(read: () => Verdict): Verdict {
+  try {
+    return read()
+  } catch {
+    // ReportBoundary supplies recovery in that view. A hidden malformed
+    // report must not throw here before its boundary can isolate it.
+    return { tone: 'none', label: 'Unavailable' }
+  }
+}
 
 function trendInput(metric: Metric | undefined) {
   if (!metric || !metric.available) return null
@@ -503,6 +631,9 @@ function Question({
   facts,
   note,
   children,
+  factGroups,
+  toolbar,
+  visual,
 }: {
   id: AnalyticsView
   title: string
@@ -511,19 +642,61 @@ function Question({
   sentence: ReactNode
   chart: ReactNode
   facts: Array<Fact>
+  factGroups?: Array<{ title: string; facts: Array<Fact> }>
   note: string
+  toolbar?: ReactNode
+  visual?: ReactNode
   children?: ReactNode
 }) {
   return (
     <QuestionShell id={id} title={title} question={question} verdict={verdict}>
-      <p className="max-w-[900px] text-2xl leading-[1.3] font-semibold tracking-[-0.015em]">
-        {sentence}
-      </p>
-      <div className="grid items-start gap-10 xl:grid-cols-[480px_1fr]">
-        <div className="min-w-0">{chart}</div>
-        <FactList facts={facts} />
+      {toolbar}
+      <div className="analytics-overview">
+        <div className="analytics-key-numbers">
+          <dl>
+            {facts.slice(0, 3).map((fact, index) => (
+              <div
+                key={fact.label}
+                className={
+                  index === 0
+                    ? 'analytics-primary-number'
+                    : 'analytics-support-number'
+                }
+              >
+                <dt>{fact.label}</dt>
+                <dd>{fact.value ?? 'unknown'}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="analytics-answer">{sentence}</p>
+        </div>
+        <div className="analytics-chart">{chart}</div>
       </div>
-      <p className="max-w-[900px] text-[13px] text-base-content/45">{note}</p>
+      <div className={visual ? 'analytics-detail-grid' : undefined}>
+        {visual}
+        {factGroups ? (
+          <div className="analytics-fact-groups">
+            {factGroups.map((group) => {
+              const remaining = group.facts.filter(
+                (fact) =>
+                  !facts.slice(0, 3).some((main) => main.label === fact.label),
+              )
+              return remaining.length ? (
+                <div key={group.title}>
+                  <h3>{group.title}</h3>
+                  <FactList facts={remaining} />
+                </div>
+              ) : null
+            })}
+          </div>
+        ) : (
+          <FactList facts={facts.slice(3)} />
+        )}
+      </div>
+      <details className="analytics-method-disclosure">
+        <summary>Sources & measurement notes</summary>
+        <p className="analytics-method">{note}</p>
+      </details>
       {children}
     </QuestionShell>
   )
@@ -547,14 +720,12 @@ function QuestionShell({
     <section
       id={id}
       aria-labelledby={`${id}-heading`}
-      className="flex scroll-mt-16 flex-col gap-[18px]"
+      className="analytics-question"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-        <h2
-          id={`${id}-heading`}
-          className="text-[11px] font-bold tracking-[0.08em] text-base-content/45 uppercase"
-        >
-          {title} · {question}
+        <h2 id={`${id}-heading`} className="analytics-question-heading">
+          {title}
+          <span>{question}</span>
         </h2>
         <VerdictPill verdict={verdict} />
       </div>
@@ -578,6 +749,7 @@ function CannotSay({
   report,
   label,
   note,
+  toolbar,
 }: {
   id: AnalyticsView
   title: string
@@ -586,9 +758,11 @@ function CannotSay({
   report: Report<unknown>
   label: string
   note?: string
+  toolbar?: ReactNode
 }) {
   return (
     <QuestionShell id={id} title={title} question={question} verdict={verdict}>
+      {toolbar}
       {report.data ? (
         <>
           <p className="max-w-[900px] text-2xl leading-[1.3] font-semibold tracking-[-0.015em]">
@@ -629,7 +803,7 @@ export const CANNOT_SAY = 'We cannot say yet.'
 
 function FactList({ facts }: { facts: Array<Fact> }) {
   return (
-    <dl className="grid min-w-0 gap-x-7 sm:grid-cols-2">
+    <dl className="analytics-facts">
       {facts.map((fact) => (
         <div
           key={fact.label}
@@ -654,7 +828,7 @@ function FactList({ facts }: { facts: Array<Fact> }) {
 /** Everything a section used to show, one click away and closed by default. */
 function MoreDetail({ children }: { children: ReactNode }) {
   return (
-    <details className="rounded-xl ring-1 ring-base-300/60">
+    <details className="analytics-detail rounded-xl ring-1 ring-base-300/60">
       <summary className="cursor-pointer p-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-primary">
         More detail
       </summary>
@@ -662,40 +836,6 @@ function MoreDetail({ children }: { children: ReactNode }) {
         {children}
       </div>
     </details>
-  )
-}
-
-/** A chart at the size this page draws them, tinted by the verdict. */
-function Figure({
-  verdict,
-  kind,
-  buckets,
-  step,
-  label,
-}: {
-  verdict: Verdict
-  kind: 'bars' | 'line'
-  buckets: Array<Bucket> | null | undefined
-  step: string
-  label: string
-}) {
-  const tone = VERDICT_TONE[verdict.tone].chart
-  return kind === 'bars' ? (
-    <Bars
-      buckets={buckets}
-      step={step}
-      label={label}
-      tone={tone}
-      className="h-[120px]"
-    />
-  ) : (
-    <Sparkline
-      buckets={buckets}
-      step={step}
-      label={label}
-      tone={tone}
-      className="h-[120px]"
-    />
   )
 }
 
@@ -773,7 +913,7 @@ const GROWTH_QUESTION = 'Are new people showing up, and do they stick?'
  * "unknown", never a zero.
  */
 const GROWTH_NOTE =
-  'Sign-ups are counted from Logto with staff excluded. "Finished setting up" means the account saved at least one widget. "Signed up from the desktop app" is the Logto application the account registered through; accounts with none recorded are neither. Sign-ups on the website are PostHog events on the site, a different count from Logto accounts. "Came back a second day" covers only accounts with usage analytics enabled.'
+  'Sign-ups are counted from Logto. Each report states whether staff are excluded. "Finished setting up" means the account saved at least one widget. "Signed up from the desktop app" is the Logto application the account registered through; accounts with none recorded are neither. Sign-ups on the website are PostHog events on the site, a different count from Logto accounts. "Came back a second day" covers only accounts with usage analytics enabled.'
 
 export function GrowthContent({
   period,
@@ -850,18 +990,41 @@ export function GrowthContent({
       question={GROWTH_QUESTION}
       verdict={verdict}
       sentence={sentence}
-      chart={
-        <Figure
-          verdict={verdict}
-          kind="bars"
-          buckets={a.new_curve}
-          step={a.curve_step}
-          label="Sign-ups per bucket"
-        />
-      }
+      chart={<SignupTrend buckets={a.new_curve} step={a.curve_step} />}
       facts={facts}
+      factGroups={[
+        {
+          title: windowLabel,
+          facts: facts.filter(
+            (fact) =>
+              fact.label === `Signed up ${periodPhrase(period)}` ||
+              fact.label === previousFact(period, a.new)[0]?.label ||
+              fact.label === 'Signed up from the desktop app',
+          ),
+        },
+        {
+          title: 'Current account snapshot',
+          facts: facts.filter((fact) =>
+            [
+              'Accounts in total',
+              'Finished setting up',
+              'Never finished setting up',
+              'Deleted their account',
+            ].includes(fact.label),
+          ),
+        },
+        {
+          title: 'Separate measurements · different populations',
+          facts: facts.filter((fact) =>
+            ['Signed up on the website', 'Came back a second day'].includes(
+              fact.label,
+            ),
+          ),
+        },
+      ]}
       note={GROWTH_NOTE}
     >
+      <Stamp at={a.generated_at} />
       <MoreDetail>
         {staffExcluded && <StaffExcludedBadge />}
         <Section
@@ -1001,15 +1164,22 @@ function OpenedSignupDiagnostics({
       },
       [application, getToken, period, refresh],
     ),
+    `${application}:${signupDays(period)}`,
   )
   return (
-    <SignupDiagnostics
-      open
-      period={period}
-      signup={signup}
-      application={application}
-      onApplicationChange={onApplicationChange}
-    />
+    <ReportBoundary
+      label="Signup diagnostics"
+      resetKeys={[signup.data]}
+      onRetry={signup.retry}
+    >
+      <SignupDiagnostics
+        open
+        period={period}
+        signup={signup}
+        application={application}
+        onApplicationChange={onApplicationChange}
+      />
+    </ReportBoundary>
   )
 }
 
@@ -1351,6 +1521,9 @@ function FilterSelect({
         className="min-h-10 rounded-lg bg-base-100 px-2 text-sm ring-1 ring-base-300 focus-visible:outline-2 focus-visible:outline-primary"
       >
         <option value="">All</option>
+        {value && !options.some((option) => option.value === value) && (
+          <option value={value}>{value}</option>
+        )}
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.value} ({num(option.count)})
@@ -1358,6 +1531,57 @@ function FilterSelect({
         ))}
       </select>
     </label>
+  )
+}
+
+function DesktopFilters({
+  data,
+  filters,
+  onChange,
+}: {
+  data: DesktopUsage | null
+  filters: DesktopFilterQuery
+  onChange: (filters: DesktopFilterQuery) => void
+}) {
+  const active = Boolean(filters.os || filters.version || filters.plan)
+  const fields = [
+    ['os', 'OS'],
+    ['version', 'Version'],
+    ['plan', 'Plan (current)'],
+  ] as const
+  const visible = fields.filter(
+    ([key]) => filters[key] || (data?.filters[key]?.length ?? 0) > 0,
+  )
+  if (!visible.length) return null
+  return (
+    <div className="analytics-filters">
+      <div className="flex flex-wrap items-center gap-4 rounded-xl bg-base-200/30 p-3 ring-1 ring-base-300/60">
+        {visible.map(([key, label]) => (
+          <FilterSelect
+            key={key}
+            label={label}
+            name={key}
+            options={data?.filters[key] ?? []}
+            value={filters[key]}
+            onChange={(value) => onChange({ ...filters, [key]: value })}
+          />
+        ))}
+        {active && (
+          <button
+            type="button"
+            className="min-h-10 rounded-lg px-3 text-sm text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary"
+            onClick={() =>
+              onChange({ os: undefined, version: undefined, plan: undefined })
+            }
+          >
+            Reset filters
+          </button>
+        )}
+        {data?.filters.note && (
+          <p className="text-xs text-base-content/60">{data.filters.note}</p>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -1409,6 +1633,9 @@ export function DesktopContent({
 }: DesktopContentProps) {
   const windowLabel = periodLabel(period)
   const d = desktop.data
+  const toolbar = (
+    <DesktopFilters data={d} filters={filters} onChange={onFilterChange} />
+  )
 
   if (!d || !d.unique_users.available) {
     return (
@@ -1420,6 +1647,7 @@ export function DesktopContent({
         report={desktop}
         label="desktop usage"
         note={d?.unique_users.note ?? DESKTOP_NOTE}
+        toolbar={toolbar}
       />
     )
   }
@@ -1482,62 +1710,28 @@ export function DesktopContent({
       verdict={verdict}
       sentence={sentence}
       chart={
-        <Figure
-          verdict={verdict}
+        <AnalyticsTrend
           kind="line"
           buckets={d.users_curve}
           step={d.curve_step}
-          label="App users per bucket"
+          title="People using Scrollr"
+          unit="Distinct app users per bucket"
         />
       }
       facts={facts}
+      toolbar={toolbar}
+      visual={<WidgetRanking widgets={d.widgets} />}
       note={[d.coverage.note, DESKTOP_NOTE].filter(Boolean).join(' ')}
     >
+      <Stamp at={d.generated_at} />
       <MoreDetail>
         <div className="flex flex-wrap items-center gap-3">
-          <Stamp at={d.generated_at} />
           {d.staff_excluded && <StaffExcludedBadge />}
           <Link to="/admin/versions" className={LINK}>
             Version adoption and error rates → Versions
           </Link>
         </div>
         <CoverageNote coverage={d.coverage} />
-        {((d.filters.os?.length ?? 0) > 0 ||
-          (d.filters.version?.length ?? 0) > 0 ||
-          (d.filters.plan?.length ?? 0) > 0) && (
-          <div className="flex flex-wrap items-center gap-4 rounded-xl bg-base-200/30 p-3 ring-1 ring-base-300/60">
-            {(d.filters.os?.length ?? 0) > 0 && (
-              <FilterSelect
-                label="OS"
-                name="os"
-                options={d.filters.os ?? []}
-                value={filters.os}
-                onChange={(os) => onFilterChange({ ...filters, os })}
-              />
-            )}
-            {(d.filters.version?.length ?? 0) > 0 && (
-              <FilterSelect
-                label="Version"
-                name="version"
-                options={d.filters.version ?? []}
-                value={filters.version}
-                onChange={(version) => onFilterChange({ ...filters, version })}
-              />
-            )}
-            {(d.filters.plan?.length ?? 0) > 0 && (
-              <FilterSelect
-                label="Plan (current)"
-                name="plan"
-                options={d.filters.plan ?? []}
-                value={filters.plan}
-                onChange={(plan) => onFilterChange({ ...filters, plan })}
-              />
-            )}
-            {d.filters.note && (
-              <p className="text-xs text-base-content/60">{d.filters.note}</p>
-            )}
-          </div>
-        )}
 
         <Section
           id="presence"
@@ -1670,6 +1864,41 @@ export function DesktopContent({
         </Section>
       </MoreDetail>
     </Question>
+  )
+}
+
+function WidgetRanking({ widgets }: { widgets: DesktopUsage['widgets'] }) {
+  const rows = [...(widgets.rows ?? [])]
+    .sort((a, b) => b.user_hours - a.user_hours)
+    .slice(0, 5)
+  const max = Math.max(1, ...rows.map((row) => row.user_hours))
+  return (
+    <section
+      className="analytics-widget-ranking"
+      aria-label="Most watched widgets"
+    >
+      <header>
+        <h3>What stays on screen</h3>
+        <p>Ticker user-hours · top five widgets</p>
+      </header>
+      {rows.length ? (
+        <ol>
+          {rows.map((row) => (
+            <li key={row.widget_type}>
+              <div>
+                <span>{row.name || row.widget_type}</span>
+                <strong>{formatHours(row.user_hours)}</strong>
+              </div>
+              <div className="analytics-widget-track" aria-hidden="true">
+                <span style={{ width: `${(row.user_hours / max) * 100}%` }} />
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p>No widget observations in this window.</p>
+      )}
+    </section>
   )
 }
 
@@ -1980,12 +2209,13 @@ export function RevenueContent({
       verdict={verdict}
       sentence={sentence}
       chart={
-        <Figure
-          verdict={verdict}
+        <AnalyticsTrend
           kind="bars"
           buckets={r.earnings.curve}
           step={r.earnings.curve_step}
-          label={`Net earnings per bucket (${currency.toUpperCase()}, minor units)`}
+          title="Net earnings over time"
+          unit={currency.toUpperCase()}
+          format={money}
         />
       }
       facts={facts}
@@ -2365,12 +2595,12 @@ export function SupportContent({
       verdict={verdict}
       sentence={sentence}
       chart={
-        <Figure
-          verdict={verdict}
+        <AnalyticsTrend
           kind="bars"
           buckets={s.completed_curve}
           step={s.curve_step}
-          label="Tickets finished per bucket"
+          title="Tickets finished over time"
+          unit="Completed tickets per bucket"
         />
       }
       facts={facts}

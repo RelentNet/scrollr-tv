@@ -74,6 +74,14 @@ const SECTION_LABELS = [
 ]
 
 beforeEach(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: () => ({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  })
   mocks.authenticated = true
   mocks.me.mockReset()
   mocks.sub = 'sub-1'
@@ -94,6 +102,17 @@ describe('site chrome', () => {
 })
 
 describe('AdminChrome', () => {
+  it('returns sign-in to the requested staff page and filters', async () => {
+    mocks.authenticated = false
+    const host = await render(
+      <AdminShell />,
+      '/admin/analytics?period=30d&view=revenue',
+    )
+    await act(() => host.querySelector<HTMLButtonElement>('button')!.click())
+    expect(mocks.signIn).toHaveBeenCalledWith(
+      '/admin/analytics?period=30d&view=revenue',
+    )
+  })
   it('offers all seven sections and a way back to the site', async () => {
     const host = await render(
       <AdminChrome email="staff@myscrollr.com">
@@ -129,9 +148,16 @@ describe('AdminChrome', () => {
         <p>page</p>
       </AdminChrome>,
     )
-    const main = host.querySelector('main')!
-    expect(main.className).toContain('min-h-[calc(100dvh-48px)]')
-    expect(main.className).not.toContain('max-w-')
+    const workspace = host.querySelector<HTMLElement>(
+      '[aria-label="Staff workspace"]',
+    )!
+    expect(workspace.className).toContain('min-h-[calc(100dvh-48px)]')
+    expect(workspace.className).not.toContain('max-w-')
+    // RootLayout owns the single main landmark. This region is focusable
+    // so the shared skip link can bypass the staff navigation.
+    expect(host.querySelector('main')).toBeNull()
+    workspace.focus()
+    expect(document.activeElement).toBe(workspace)
   })
 })
 

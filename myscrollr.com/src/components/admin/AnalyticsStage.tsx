@@ -19,8 +19,15 @@ export function AnalyticsStage({
         window.matchMedia('(prefers-reduced-motion: reduce)').matches)
     )
       return
-    const animation = content.current.animate(
-      [{ opacity: 0.65 }, { opacity: 1 }],
+    const chart = content.current.querySelector<HTMLElement>(
+      ':scope > div:not([hidden]) .analytics-chart',
+    )
+    if (!chart) return
+    const animation = chart.animate(
+      [
+        { transform: 'translateY(5px)', opacity: 0.75 },
+        { transform: 'translateY(0)', opacity: 1 },
+      ],
       { duration: 180, easing: 'ease-out' },
     )
     return () => animation.cancel()

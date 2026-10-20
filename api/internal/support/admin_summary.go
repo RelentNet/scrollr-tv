@@ -113,7 +113,7 @@ func loadSupportSummary(ctx context.Context, period platform.Period, now time.Ti
 		Definitions: map[string]string{
 			"needs_attention":     "New requests, customer replies nobody has answered, pending or failed drafts: work for a person or the bot.",
 			"waiting_on_customer": "A reply or a question went out and nothing newer has come back.",
-			"completed":           "Closed in osTicket, or dismissed (a draft skipped as needing no reply). Both are shown separately in the queue.",
+			"completed":           "Closed in osTicket, or dismissed in the console or a draft skipped as needing no reply. Both are shown separately in the queue.",
 			"paying":              "Overlay, not a bucket: tickets from a verified signed-in account with a current paid plan (including lifetime). Contacts matched only by email are unknown and never assumed paying.",
 		},
 		CreatedCurve: []platform.Bucket{}, CompletedCurve: []platform.Bucket{}, BacklogCurve: []platform.Bucket{},
@@ -137,7 +137,7 @@ func loadSupportSummary(ctx context.Context, period platform.Period, now time.Ti
 			bucket = &out.WaitingOnCustomer
 		case queueHandled:
 			bucket = &out.Completed
-			if r.Status == "closed" {
+			if r.Status == "closed" && r.ConsoleStatus != "dismissed" {
 				out.CompletedClosed++
 			} else {
 				out.CompletedDismissed++

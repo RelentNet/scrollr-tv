@@ -238,6 +238,18 @@ function AnalyticsWorkspace() {
             view={view}
             period={period}
             verdicts={sectionVerdicts}
+            populationControls={
+              <div
+                hidden={view !== 'desktop'}
+                className="analytics-population-controls"
+              >
+                <DesktopFilters
+                  data={desktop.data}
+                  filters={{ os, version, plan }}
+                  onChange={(next) => void setSearch(next)}
+                />
+              </div>
+            }
             refreshing={
               view === 'growth'
                 ? [audience, website, desktop, week1Return].some(
@@ -261,29 +273,9 @@ function AnalyticsWorkspace() {
               else support.retry()
             }}
           />
-          <div className="analytics-population-slot">
-            <div
-              hidden={view !== 'desktop'}
-              inert={view !== 'desktop'}
-              aria-hidden={view !== 'desktop'}
-            >
-              <DesktopFilters
-                data={desktop.data}
-                filters={{ os, version, plan }}
-                onChange={(next) => void setSearch(next)}
-              />
-            </div>
-            <p hidden={view === 'desktop'} className="analytics-context">
-              {view === 'growth'
-                ? 'Acquisition, setup and return visits'
-                : view === 'revenue'
-                  ? 'Payments, subscriptions and plan mix'
-                  : 'Response times, bot activity and your queue'}
-            </p>
-          </div>
         </div>
         <AnalyticsStage
-          transitionKey={`${view}:${period}:${os}:${version}:${plan}:${view === 'growth' ? audience.loading : { desktop, revenue, support }[view].loading}`}
+          transitionKey={`${view}:${period}:${os}:${version}:${plan}`}
         >
           <div
             hidden={view !== 'growth'}
@@ -305,16 +297,23 @@ function AnalyticsWorkspace() {
                 audience={audience}
                 website={website}
                 desktop={desktop}
+                investigations={
+                  <>
+                    <ReportBoundary
+                      label="Week-1 return"
+                      resetKeys={[week1Return.data]}
+                      onRetry={week1Return.retry}
+                    >
+                      <Week1ReturnContent report={week1Return} />
+                    </ReportBoundary>
+                    <SignupDiagnosticsSection
+                      period={period}
+                      refresh={refresh}
+                    />
+                  </>
+                }
               />
             </ReportBoundary>
-            <ReportBoundary
-              label="Week-1 return"
-              resetKeys={[week1Return.data]}
-              onRetry={week1Return.retry}
-            >
-              <Week1ReturnContent report={week1Return} />
-            </ReportBoundary>
-            <SignupDiagnosticsSection period={period} refresh={refresh} />
           </div>
           <div
             hidden={view !== 'desktop'}
@@ -531,6 +530,7 @@ export function SectionNav({
   onPeriod,
   onRefresh,
   refreshing = false,
+  populationControls,
 }: {
   view: AnalyticsView
   period: Period
@@ -539,6 +539,7 @@ export function SectionNav({
   onPeriod: (period: Period) => void
   onRefresh?: () => void
   refreshing?: boolean
+  populationControls?: ReactNode
 }) {
   return (
     <nav aria-label="Analytics sections" className="analytics-nav">
@@ -568,6 +569,7 @@ export function SectionNav({
         })}
       </div>
       <div className="analytics-nav-controls">
+        {populationControls}
         <PeriodSelector value={period} onChange={onPeriod} />
         {onRefresh && (
           <RefreshButton
@@ -688,7 +690,42 @@ function Question({
   children?: ReactNode
 }) {
   return (
-    <QuestionShell id={id} title={title} question={question} verdict={verdict}>
+    <QuestionShell
+      id={id}
+      title={title}
+      question={question}
+      verdict={verdict}
+      info={
+        <AnalyticsDetails compact title={`${title}: measurements`}>
+          {visual}
+          <div>
+            {factGroups ? (
+              <div className="analytics-fact-groups">
+                {factGroups.map((group) => {
+                  const remaining = group.facts.filter(
+                    (fact) =>
+                      !facts
+                        .slice(0, 3)
+                        .some((main) => main.label === fact.label),
+                  )
+                  return remaining.length ? (
+                    <div key={group.title}>
+                      <h3>{group.title}</h3>
+                      <FactList facts={remaining} />
+                    </div>
+                  ) : null
+                })}
+              </div>
+            ) : (
+              <FactList facts={facts.slice(3)} />
+            )}
+          </div>
+          <section>
+            <p className="analytics-method">{note}</p>
+          </section>
+        </AnalyticsDetails>
+      }
+    >
       {toolbar}
       <div className="analytics-overview">
         <div className="analytics-key-numbers">
@@ -711,31 +748,7 @@ function Question({
         </div>
         <div className="analytics-chart">{chart}</div>
       </div>
-      <div className={visual ? 'analytics-detail-grid' : undefined}>
-        {visual}
-        {factGroups ? (
-          <div className="analytics-fact-groups">
-            {factGroups.map((group) => {
-              const remaining = group.facts.filter(
-                (fact) =>
-                  !facts.slice(0, 3).some((main) => main.label === fact.label),
-              )
-              return remaining.length ? (
-                <div key={group.title}>
-                  <h3>{group.title}</h3>
-                  <FactList facts={remaining} />
-                </div>
-              ) : null
-            })}
-          </div>
-        ) : (
-          <FactList facts={facts.slice(3)} />
-        )}
-      </div>
-      <details className="analytics-method-disclosure">
-        <summary>Sources & measurement notes</summary>
-        <p className="analytics-method">{note}</p>
-      </details>
+
       {children}
     </QuestionShell>
   )
@@ -748,11 +761,13 @@ function QuestionShell({
   question,
   verdict,
   children,
+  info,
 }: {
   id: AnalyticsView
   title: string
   question: string
   verdict: Verdict
+  info?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -766,7 +781,10 @@ function QuestionShell({
           {title}
           <span>{question}</span>
         </h2>
-        <VerdictPill verdict={verdict} />
+        <div className="analytics-heading-actions">
+          <VerdictPill verdict={verdict} />
+          {info}
+        </div>
       </div>
       {children}
     </section>
@@ -937,6 +955,7 @@ export interface GrowthContentProps {
   audience: Report<Audience>
   website: Report<Website>
   desktop: Report<DesktopUsage>
+  investigations?: ReactNode
 }
 
 const GROWTH_QUESTION = 'Are new people showing up, and do they stick?'
@@ -949,7 +968,96 @@ const GROWTH_QUESTION = 'Are new people showing up, and do they stick?'
 const GROWTH_NOTE =
   'Sign-ups are counted from Logto. Each report states whether staff are excluded. "Finished setting up" means the account saved at least one widget. "Signed up from the desktop app" is the Logto application the account registered through; accounts with none recorded are neither. Sign-ups on the website are PostHog events on the site, a different count from Logto accounts.'
 
-export function GrowthContent({
+export function GrowthContent(props: GrowthContentProps) {
+  const { audience, website, period, investigations } = props
+  const windowLabel = periodLabel(period)
+  const staffExcluded = [audience, website].some((r) => r.data?.staff_excluded)
+  return (
+    <>
+      <GrowthOverview {...props} />
+      <MoreDetail title="Acquisition details">
+        <Loaded report={audience} label="registered accounts">
+          {(a) =>
+            a.available ? (
+              <>
+                {staffExcluded && <StaffExcludedBadge />}
+                <Section
+                  id="accounts"
+                  title="Registered users"
+                  lede="Logto is the system of record. Authentication is not app usage."
+                >
+                  <div className="space-y-3">
+                    <Stamp at={a.generated_at} />
+                    <FactList
+                      facts={[
+                        {
+                          label: 'Registered accounts today',
+                          value: num(a.total),
+                        },
+                        {
+                          label: 'Finished setting up the app',
+                          value: num(a.set_up),
+                        },
+                        {
+                          label: `New accounts ${periodPhrase(period)}`,
+                          value: factOf(a.new),
+                        },
+                        {
+                          label: `Signed in ${periodPhrase(period)}`,
+                          value: factOf(a.signed_in_in_period),
+                        },
+                        {
+                          label: 'Lifetime registrations',
+                          value: num(a.lifetime_registrations),
+                        },
+                        {
+                          label: 'Known deleted accounts',
+                          value: num(a.known_purged),
+                        },
+                      ]}
+                    />
+                    <CoverageNote coverage={a.coverage} />
+                    <DefinitionDisclosure>
+                      <p>{a.definition}</p>
+                      <p>
+                        Sign-ins measure authentication, not usage. A running
+                        app with a valid token does not need to sign in again.
+                      </p>
+                      <p>
+                        New accounts:{' '}
+                        <DeltaBadge comparison={a.new.comparison} />
+                      </p>
+                    </DefinitionDisclosure>
+                  </div>
+                </Section>
+
+                <Section
+                  id="website"
+                  title="Website"
+                  lede="PostHog pageviews. A visitor is a browser profile merged on sign-in, not guaranteed to be one human."
+                >
+                  <Loaded report={website} label="website analytics">
+                    {(loadedWebsite) => (
+                      <WebsiteBlock
+                        website={loadedWebsite}
+                        windowLabel={windowLabel}
+                      />
+                    )}
+                  </Loaded>
+                </Section>
+              </>
+            ) : (
+              <Unmeasurable note={a.note ?? GROWTH_NOTE} />
+            )
+          }
+        </Loaded>
+        {investigations}
+      </MoreDetail>
+    </>
+  )
+}
+
+function GrowthOverview({
   period,
   verdict,
   audience,
@@ -958,7 +1066,6 @@ export function GrowthContent({
   const windowLabel = periodLabel(period)
   const a = audience.data
   const w = website.data
-  const staffExcluded = [audience, website].some((r) => r.data?.staff_excluded)
 
   if (!a || !a.available || !a.new.available) {
     return (
@@ -1048,60 +1155,6 @@ export function GrowthContent({
       note={GROWTH_NOTE}
     >
       <Stamp at={a.generated_at} />
-      <MoreDetail title="Acquisition details">
-        {staffExcluded && <StaffExcludedBadge />}
-        <Section
-          id="accounts"
-          title="Registered users"
-          lede="Logto is the system of record. Authentication is not app usage."
-        >
-          <div className="space-y-3">
-            <Stamp at={a.generated_at} />
-            <FactList
-              facts={[
-                { label: 'Registered accounts today', value: num(a.total) },
-                { label: 'Finished setting up the app', value: num(a.set_up) },
-                {
-                  label: `New accounts ${periodPhrase(period)}`,
-                  value: factOf(a.new),
-                },
-                {
-                  label: `Signed in ${periodPhrase(period)}`,
-                  value: factOf(a.signed_in_in_period),
-                },
-                {
-                  label: 'Lifetime registrations',
-                  value: num(a.lifetime_registrations),
-                },
-                { label: 'Known deleted accounts', value: num(a.known_purged) },
-              ]}
-            />
-            <CoverageNote coverage={a.coverage} />
-            <DefinitionDisclosure>
-              <p>{a.definition}</p>
-              <p>
-                Sign-ins measure authentication, not usage. A running app with a
-                valid token does not need to sign in again.
-              </p>
-              <p>
-                New accounts: <DeltaBadge comparison={a.new.comparison} />
-              </p>
-            </DefinitionDisclosure>
-          </div>
-        </Section>
-
-        <Section
-          id="website"
-          title="Website"
-          lede="PostHog pageviews. A visitor is a browser profile merged on sign-in, not guaranteed to be one human."
-        >
-          <Loaded report={website} label="website analytics">
-            {(loadedWebsite) => (
-              <WebsiteBlock website={loadedWebsite} windowLabel={windowLabel} />
-            )}
-          </Loaded>
-        </Section>
-      </MoreDetail>
     </Question>
   )
 }
@@ -1121,7 +1174,7 @@ export function SignupDiagnosticsSection({
 }) {
   const [opened, setOpened] = useState(false)
   const [application, setApplication] =
-    useState<AnalyticsApplication>('website')
+    useState<AnalyticsApplication>('desktop')
   return opened ? (
     <OpenedSignupDiagnostics
       period={period}
@@ -1165,7 +1218,8 @@ function OpenedSignupDiagnostics({
       },
       [application, getToken, period, refresh],
     ),
-    `${application}:${signupDays(period)}`,
+    `${application}:${signupDays(period)}:${refresh}`,
+    5 * 60_000,
   )
   return (
     <ReportBoundary
@@ -1211,8 +1265,7 @@ export function SignupDiagnostics({
       <summary className="cursor-pointer p-4 text-base font-semibold focus-visible:outline-2 focus-visible:outline-primary">
         Signup diagnostics
         <span className="ml-2 text-xs font-normal text-base-content/60">
-          secondary · retained Logto registration events, last{' '}
-          {signupDays(period)} days
+          Troubleshoot registration · last {signupDays(period)} days
         </span>
       </summary>
       <div className="space-y-3 border-t border-base-300/60 p-4">
@@ -1388,16 +1441,21 @@ function SignupBlock({ signup }: { signup: SignupAnalytics }) {
   )
   return (
     <>
-      <div className="rounded-xl bg-warning/5 p-4 text-sm ring-1 ring-warning/20">
-        <p className="font-semibold">
-          {signup.coverage.status === 'partial'
-            ? 'Partial coverage'
-            : 'Coverage limits unknown'}
+      <div className="analytics-diagnostic-summary">
+        <h3>
+          {eventTotal === 0
+            ? 'No registration events found'
+            : signup.error_reasons.length
+              ? 'Registration errors need a look'
+              : 'No registration errors found'}
+        </h3>
+        <p>
+          {num(eventTotal)} observed events in retained authentication logs.
+          These are steps in registration, not a count of people.
         </p>
-        <p className="mt-1 text-base-content/65">{signup.coverage.note}</p>
-        <p className="mt-2 text-xs text-base-content/50">
-          {num(signup.coverage.unique_logs)} unique retained logs scanned ·
-          generated {new Date(signup.generated_at).toLocaleString()}
+        <p className="text-sm text-base-content/60">
+          Coverage is limited; missing events do not establish zero signups or a
+          completion rate.
         </p>
       </div>
       {eventTotal === 0 ? (
@@ -1406,40 +1464,47 @@ function SignupBlock({ signup }: { signup: SignupAnalytics }) {
           coverage, this is not proof of zero activity.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl ring-1 ring-base-300/60">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-base-200/40 text-left text-xs text-base-content/55">
-                <th className="px-4 py-3 font-medium">Path</th>
-                <th className="px-4 py-3 font-medium">Event</th>
-                <th className="px-4 py-3 text-right font-medium">Count</th>
-                <th className="px-4 py-3 text-right font-medium">Errors</th>
-              </tr>
-            </thead>
-            <tbody>
-              {STAGES.map((stage) => {
-                const metrics = signup.stages[stage.key] ?? {
-                  events: 0,
-                  errors: 0,
-                }
-                return (
-                  <tr key={stage.key} className="border-t border-base-300/50">
-                    <td className="px-4 py-2 text-base-content/55">
-                      {stage.path}
-                    </td>
-                    <td className="px-4 py-2 font-medium">{stage.label}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      {num(metrics.events)}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-base-content/60">
-                      {num(metrics.errors)}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <details className="analytics-diagnostic-events">
+          <summary>Inspect recorded steps</summary>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-base-200/40 text-left text-xs text-base-content/55">
+                  <th className="px-4 py-3 font-medium">Path</th>
+                  <th className="px-4 py-3 font-medium">Event</th>
+                  <th className="px-4 py-3 text-right font-medium">Count</th>
+                  <th className="px-4 py-3 text-right font-medium">Errors</th>
+                </tr>
+              </thead>
+              <tbody>
+                {STAGES.filter(
+                  (stage) =>
+                    signup.stages[stage.key].events > 0 ||
+                    signup.stages[stage.key].errors > 0,
+                ).map((stage) => {
+                  const metrics = signup.stages[stage.key] ?? {
+                    events: 0,
+                    errors: 0,
+                  }
+                  return (
+                    <tr key={stage.key} className="border-t border-base-300/50">
+                      <td className="px-4 py-2 text-base-content/55">
+                        {stage.path}
+                      </td>
+                      <td className="px-4 py-2 font-medium">{stage.label}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">
+                        {num(metrics.events)}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums text-base-content/60">
+                        {num(metrics.errors)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </details>
       )}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card
@@ -1466,15 +1531,13 @@ function SignupBlock({ signup }: { signup: SignupAnalytics }) {
             </ul>
           )}
         </Card>
-        <Card
-          title="Attempt conversion"
-          note="A missing later event is not proof of abandonment. Completion and drop-off stay unavailable until correlation and path semantics provide a real denominator."
-        >
-          <p className="text-sm text-base-content/65">
-            {signup.attempt_conversion.note}
-          </p>
-        </Card>
       </div>
+      <DefinitionDisclosure summary="Coverage and counting rules">
+        <p>{signup.coverage.note}</p>
+        <p>{signup.attempt_conversion.note}</p>
+        <p>{num(signup.coverage.unique_logs)} unique logs scanned.</p>
+      </DefinitionDisclosure>
+      <Stamp at={signup.generated_at} />
     </>
   )
 }
@@ -1549,7 +1612,7 @@ function DesktopFilters({
   const fields = [
     ['os', 'OS'],
     ['version', 'Version'],
-    ['plan', 'Plan (current)'],
+    ['plan', 'Plan'],
   ] as const
   return (
     <div className="analytics-filters">
@@ -1567,12 +1630,13 @@ function DesktopFilters({
         <button
           type="button"
           disabled={!active}
+          aria-label="Reset filters"
           className="min-h-10 rounded-lg px-3 text-sm text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary"
           onClick={() =>
             onChange({ os: undefined, version: undefined, plan: undefined })
           }
         >
-          Reset filters
+          Reset
         </button>
       </div>
     </div>

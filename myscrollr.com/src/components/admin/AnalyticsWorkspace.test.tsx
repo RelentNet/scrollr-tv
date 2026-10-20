@@ -98,20 +98,13 @@ async function mount() {
 }
 
 describe('Analytics report isolation', () => {
-  it('clears signup diagnostics when the application changes and ignores superseded responses', async () => {
-    let finishDesktop!: (value: analytics.SignupAnalytics) => void
+  it('defaults to desktop and restores its cached result while ignoring a superseded website scan', async () => {
     let finishWebsite!: (value: analytics.SignupAnalytics) => void
     vi.mocked(analytics.loadSignupAnalytics)
       .mockResolvedValueOnce({
         ...signup,
-        coverage: { ...signup.coverage, note: 'Original website result' },
+        coverage: { ...signup.coverage, note: 'Desktop result' },
       })
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            finishDesktop = resolve
-          }),
-      )
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
@@ -127,39 +120,32 @@ describe('Analytics report isolation', () => {
       disclosure.open = true
       disclosure.dispatchEvent(new Event('toggle'))
     })
-    expect(host.textContent).toContain('Original website result')
-    const application = host.querySelector('[aria-label="Application"]')!
-    const applicationButton = (label: string) =>
-      Array.from(application.querySelectorAll('button')).find(
-        (button) => button.textContent === label,
-      )!
-    await act(() => applicationButton('Desktop app').click())
-    expect(host.textContent).not.toContain('Original website result')
-    expect(host.textContent).toContain('Loading signup diagnostics')
     expect(analytics.loadSignupAnalytics).toHaveBeenLastCalledWith(
       expect.any(Function),
       'desktop',
       7,
       expect.any(AbortSignal),
     )
-    await act(() => applicationButton('Website').click())
-    await act(() =>
-      finishDesktop({
-        ...signup,
-        application: 'desktop',
-        coverage: { ...signup.coverage, note: 'Superseded desktop result' },
-      }),
-    )
-    expect(host.textContent).not.toContain('Superseded desktop result')
+    expect(host.textContent).toContain('Desktop result')
+    const application = host.querySelector('[aria-label="Application"]')!
+    const button = (label: string) =>
+      Array.from(application.querySelectorAll('button')).find(
+        (el) => el.textContent === label,
+      )!
+    await act(() => button('Website').click())
+    expect(host.textContent).not.toContain('Desktop result')
     expect(host.textContent).toContain('Loading signup diagnostics')
+    await act(() => button('Desktop app').click())
+    expect(host.textContent).toContain('Desktop result')
+    expect(analytics.loadSignupAnalytics).toHaveBeenCalledTimes(2)
     await act(() =>
       finishWebsite({
         ...signup,
-        coverage: { ...signup.coverage, note: 'Current website result' },
+        coverage: { ...signup.coverage, note: 'Superseded website result' },
       }),
     )
-    expect(host.textContent).toContain('Current website result')
-    expect(reports.loadAudience).toHaveBeenCalledTimes(1)
+    expect(host.textContent).not.toContain('Superseded website result')
+    expect(host.textContent).toContain('Desktop result')
   })
 
   it('keeps other views usable when a hidden report and its verdict throw, then retries only that report', async () => {
@@ -212,7 +198,7 @@ describe('Analytics report isolation', () => {
     expect(host.textContent).toContain('Loading signup diagnostics')
     expect(analytics.loadSignupAnalytics).toHaveBeenLastCalledWith(
       expect.any(Function),
-      'website',
+      'desktop',
       30,
       expect.any(AbortSignal),
     )

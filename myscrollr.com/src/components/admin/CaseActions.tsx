@@ -46,7 +46,8 @@ export default function CaseActions({
 }) {
   const getToken = useGetToken()
   const draft = detail.draft
-  const pending = draft?.status === 'pending'
+  const dismissed = detail.console_status === 'dismissed'
+  const pending = draft?.status === 'pending' && !dismissed
 
   const [panel, setPanel] = useState<Panel>('none')
   const [busy, setBusy] = useState<string | null>(null)
@@ -160,7 +161,7 @@ export default function CaseActions({
         <p className="rounded-xl bg-base-200/40 px-4 py-3 text-sm text-base-content/60 ring-1 ring-base-300/60">
           {draft
             ? `This draft is ${draft.status}, so there is nothing left to send on it. The issue link below is still yours to change.`
-            : 'No pending reply. Manage or delete unrelated email in osTicket; this console keeps its support history.'}
+            : 'No pending reply. You can dismiss this ticket if it does not need attention.'}
         </p>
       )}
 
@@ -256,17 +257,31 @@ export default function CaseActions({
               setError(null)
             }}
           />
-          <ActionButton
-            label="Dismiss"
-            icon={<SkipForward size={14} />}
-            busy={busy === 'skip'}
-            disabled={busy !== null}
-            onClick={() => setPanel('confirm-dismiss')}
-          />
         </div>
       )}
 
-      {panel === 'confirm-dismiss' && pending && (
+      <div className="mt-3">
+        <ActionButton
+          label={dismissed ? 'Restore ticket' : 'Dismiss ticket'}
+          icon={<SkipForward size={14} />}
+          busy={busy === 'dismiss' || busy === 'restore'}
+          disabled={busy !== null}
+          onClick={() =>
+            dismissed
+              ? run('restore', () =>
+                  adminApi.restoreCase(getToken, detail.ticket_number),
+                )
+              : setPanel('confirm-dismiss')
+          }
+        />
+        {dismissed && (
+          <p className="mt-2 text-sm text-base-content/60">
+            Bot replies are stopped for this ticket, including new messages.
+            Restore it to review again. The original email and history are kept.
+          </p>
+        )}
+      </div>
+      {panel === 'confirm-dismiss' && !dismissed && (
         <div
           role="group"
           aria-label="Dismiss without replying"
@@ -274,20 +289,20 @@ export default function CaseActions({
         >
           <h3 className="font-semibold">No reply needed?</h3>
           <p className="text-sm text-base-content/65">
-            Dismiss this pending reply without emailing anyone. The ticket and
-            conversation stay in the history. This does not delete the email or
-            block future messages.
+            Move this ticket to Resolved without emailing anyone. Stop pending
+            and future bot replies until you restore it. The original email and
+            conversation stay in history; osTicket is unchanged.
           </p>
           <div className="flex flex-wrap gap-2">
             <ActionButton
               label="Dismiss without replying"
               icon={<SkipForward size={14} />}
-              busy={busy === 'skip'}
+              busy={busy === 'dismiss'}
               disabled={busy !== null}
               onClick={() =>
                 run(
-                  'skip',
-                  () => adminApi.skipDraft(getToken, draft.id),
+                  'dismiss',
+                  () => adminApi.dismissCase(getToken, detail.ticket_number),
                   () => setPanel('none'),
                 )
               }

@@ -71,6 +71,7 @@ export function useReport<T>(
     slow: false,
   })
   const request = useRef<AbortController | null>(null)
+  const lastAttempt = useRef(attempt)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -80,6 +81,19 @@ export function useReport<T>(
       cacheTime > 0 && entry && Date.now() - entry.at < cacheTime
         ? entry.data
         : null
+    const explicitRetry = attempt !== lastAttempt.current
+    lastAttempt.current = attempt
+    if (previous !== null && !explicitRetry) {
+      setState({
+        population,
+        data: previous,
+        error: null,
+        loading: false,
+        refreshing: false,
+        slow: false,
+      })
+      return () => controller.abort()
+    }
     setState((current) => ({
       population,
       data: current.population === population ? current.data : previous,

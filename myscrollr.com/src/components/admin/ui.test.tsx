@@ -44,7 +44,7 @@ function setup(scoped = false, cacheTime = 0) {
 }
 
 describe('useReport', () => {
-  it('restores only the matching cached population while revalidating', async () => {
+  it('reuses only the matching fresh population without another request', async () => {
     const { calls, container, render } = setup(true, 60_000)
     await render(1)
     await act(async () => calls[0].resolve('Windows users'))
@@ -54,14 +54,8 @@ describe('useReport', () => {
     await render(1)
     expect(container.textContent).toContain('Windows users')
     expect(container.textContent).not.toContain('Mac users')
-    expect(container.textContent).toContain('Updating things')
-    await act(async () => calls[2].reject(new Error('Unavailable')))
-    expect(container.textContent).not.toContain('Windows users')
-    await render(2)
-    await render(1)
-    expect(container.textContent).not.toContain('Windows users')
-    await act(async () => calls[4].resolve('New Windows users'))
-    expect(container.textContent).toBe('New Windows users')
+    expect(container.textContent).not.toContain('Updating things')
+    expect(calls).toHaveLength(2)
   })
   it('clears data for a different population while ignoring a superseded result', async () => {
     const { calls, container, render } = setup(true)

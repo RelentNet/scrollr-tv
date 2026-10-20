@@ -5,9 +5,11 @@ import type { ReactNode } from 'react'
 export function AnalyticsDetails({
   children,
   title = 'Explore this report',
+  compact = false,
 }: {
   children: ReactNode
   title?: string
+  compact?: boolean
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const titleId = useId()
@@ -15,10 +17,18 @@ export function AnalyticsDetails({
     <>
       <button
         type="button"
-        className="analytics-explore"
+        className={compact ? 'analytics-info' : 'analytics-explore'}
+        aria-label={compact ? title : undefined}
+        title={compact ? title : undefined}
         onClick={() => dialog.current?.showModal()}
       >
-        {title} <span aria-hidden>↗</span>
+        {compact ? (
+          <span aria-hidden>i</span>
+        ) : (
+          <>
+            {title} <span aria-hidden>↗</span>
+          </>
+        )}
       </button>
       <dialog
         ref={dialog}

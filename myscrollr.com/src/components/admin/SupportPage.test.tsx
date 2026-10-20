@@ -49,6 +49,8 @@ const mocks = vi.hoisted(() => ({
   unsubscribe: vi.fn(),
   holdDraft: vi.fn(),
   skipDraft: vi.fn(),
+  dismissCase: vi.fn(),
+  restoreCase: vi.fn(),
   onConnection: null as null | ((connected: boolean) => void),
   onEvent: null as null | ((e: { ticket_number?: string }) => void),
 }))
@@ -64,6 +66,8 @@ vi.mock('@/api/admin', async () => {
       setAutoSendPaused: mocks.setAutoSendPaused,
       holdDraft: mocks.holdDraft,
       skipDraft: mocks.skipDraft,
+      dismissCase: mocks.dismissCase,
+      restoreCase: mocks.restoreCase,
     },
     // Report the stream as live, the way a connected console does.
     subscribeToSupportEvents: (
@@ -501,7 +505,7 @@ describe('the case', () => {
       'Hold',
       'File as bug',
       'Link an issue',
-      'Dismiss',
+      'Dismiss ticket',
     ]) {
       expect(labels, `${verb} is missing`).toContain(verb)
     }
@@ -514,16 +518,62 @@ describe('the case', () => {
       [...host.querySelectorAll<HTMLButtonElement>('button')].find(
         (button) => button.textContent.trim() === label,
       )!
-    await act(() => findButton('Dismiss').click())
-    expect(mocks.skipDraft).not.toHaveBeenCalled()
+    await act(() => findButton('Dismiss ticket').click())
+    expect(mocks.dismissCase).not.toHaveBeenCalled()
     expect(host.textContent).toContain('without emailing anyone')
     const detail = cases['752473']
-    mocks.skipDraft.mockResolvedValue({
+    mocks.dismissCase.mockResolvedValue({
       ...detail,
       draft: { ...detail.draft!, status: 'skipped' },
     })
     await act(() => findButton('Dismiss without replying').click())
-    expect(mocks.skipDraft).toHaveBeenCalledWith(mocks.token, detail.draft!.id)
+    expect(mocks.dismissCase).toHaveBeenCalledWith(
+      mocks.token,
+      detail.ticket_number,
+    )
+    expect(host.querySelector('#reply-body')).toBeNull()
+  })
+
+  it('dismisses and restores a ticket with no draft', async () => {
+    const detail = {
+      ...cases['752473'],
+      draft: null,
+      user_email: undefined,
+      user_name: undefined,
+    }
+    mocks.supportCase.mockResolvedValue(detail)
+    const host = await render(1440)
+    await open(host, 'Morgan Ellis')
+    const button = (label: string) =>
+      [...host.querySelectorAll<HTMLButtonElement>('button')].find(
+        (el) => el.textContent.trim() === label,
+      )!
+    await act(() => button('Dismiss ticket').click())
+    const dismissed = {
+      ...detail,
+      console_status: 'dismissed' as const,
+      group: 'handled',
+      group_reason: 'Dismissed',
+    }
+    mocks.dismissCase.mockResolvedValue(dismissed)
+    await act(() => button('Dismiss without replying').click())
+    expect(mocks.dismissCase).toHaveBeenCalledWith(
+      mocks.token,
+      detail.ticket_number,
+    )
+    expect(button('Restore ticket')).toBeDefined()
+    expect(host.querySelector('#reply-body')).toBeNull()
+    mocks.restoreCase.mockResolvedValue({
+      ...detail,
+      console_status: 'review',
+      group: 'needs_you',
+    })
+    await act(() => button('Restore ticket').click())
+    expect(mocks.restoreCase).toHaveBeenCalledWith(
+      mocks.token,
+      detail.ticket_number,
+    )
+    expect(button('Dismiss ticket')).toBeDefined()
     expect(host.querySelector('#reply-body')).toBeNull()
   })
 

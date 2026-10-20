@@ -18,41 +18,15 @@
   z-index: 30;
   background: var(--color-base-100);
   border-bottom: 1px solid var(--analytics-line);
-  padding-top: 8px;
+  padding: 4px 0;
 }
 .analytics-command-bar .analytics-nav {
   border: 0;
-  padding-bottom: 8px;
+  padding: 0;
 }
 .analytics-nav-controls > button {
   width: 106px;
   justify-content: center;
-}
-.analytics-population-slot {
-  display: grid;
-  min-height: 66px;
-  align-items: center;
-}
-.analytics-population-slot > * {
-  grid-area: 1 / 1;
-}
-.analytics-population-slot > [hidden] {
-  display: block;
-  visibility: hidden;
-  pointer-events: none;
-}
-.analytics-context {
-  color: var(--analytics-muted);
-  font-size: 12px;
-}
-.analytics-command-bar .analytics-filters {
-  margin: 0;
-}
-.analytics-command-bar .analytics-filters > div {
-  padding: 8px 0 12px;
-  background: none;
-  box-shadow: none;
-  gap: 12px;
 }
 .analytics-filter {
   display: flex;
@@ -85,9 +59,6 @@
   grid-area: 1 / 1;
   min-width: 0;
   opacity: 1;
-  transition:
-    opacity 180ms ease-out,
-    visibility 180ms;
 }
 .analytics-stage .analytics-sections > div[hidden] {
   display: block;
@@ -1114,5 +1085,162 @@ html:has(.analytics-drawer[open]) {
     grid-column: 1 / -1;
     justify-self: end;
     font-size: 12px;
+  }
+}
+
+/* A single control surface, with two compact, scrollable rows on narrow screens. */
+.analytics-command-bar .analytics-nav {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+  align-items: center;
+}
+.analytics-command-bar .analytics-nav-links {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 2px;
+  overflow-x: auto;
+}
+.analytics-command-bar .analytics-nav-links button {
+  min-height: 38px;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+.analytics-command-bar .analytics-nav-links button > span:last-child {
+  display: none;
+}
+.analytics-command-bar .analytics-nav-controls {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+  width: auto;
+  overflow-x: auto;
+  min-height: 42px;
+}
+.analytics-nav-controls > * {
+  flex-shrink: 0;
+}
+.analytics-population-controls[hidden] {
+  display: none;
+}
+.analytics-command-bar .analytics-filters {
+  margin: 0;
+}
+.analytics-command-bar .analytics-filters > div {
+  display: flex;
+  flex-wrap: nowrap;
+  padding: 0;
+  gap: 6px;
+  background: none;
+  box-shadow: none;
+}
+.analytics-command-bar .analytics-filter {
+  flex-direction: row;
+  gap: 4px;
+  font-size: 11px;
+  margin: 0;
+}
+.analytics-command-bar .analytics-filter select {
+  width: 90px;
+  min-height: 34px;
+  height: 34px;
+  font-size: 12px;
+}
+.analytics-command-bar .analytics-filter-os select {
+  width: 100px;
+}
+.analytics-command-bar .analytics-filters button {
+  width: 42px;
+  min-height: 34px;
+  padding: 0;
+  font-size: 11px;
+}
+.analytics-command-bar .analytics-nav-controls > button {
+  width: 36px;
+  min-height: 34px;
+  padding: 8px;
+}
+.analytics-command-bar .refresh-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.analytics-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.analytics-info {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--analytics-line);
+  font-family: Georgia, serif;
+  font-style: italic;
+  cursor: pointer;
+}
+.analytics-info:focus-visible {
+  outline: 2px solid var(--analytics-series);
+  outline-offset: 3px;
+}
+.analytics-explore {
+  border: 1px solid var(--analytics-line);
+  border-radius: 10px;
+  padding: 16px 20px;
+  background: color-mix(
+    in srgb,
+    var(--analytics-series) 5%,
+    var(--color-base-100)
+  );
+}
+.analytics-question {
+  gap: 18px;
+}
+.analytics-overview-ranking {
+  max-width: 100%;
+}
+.analytics-overview-ranking .analytics-widget-ranking {
+  margin: 0;
+}
+.analytics-diagnostic-summary h3 {
+  font-weight: 600;
+  font-size: 18px;
+  margin-bottom: 6px;
+}
+.analytics-diagnostic-summary p {
+  margin: 6px 0;
+}
+.analytics-diagnostic-events summary {
+  cursor: pointer;
+  padding: 12px 0;
+  font-weight: 600;
+}
+@media (max-width: 1400px) {
+  .analytics-command-bar .analytics-nav {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .analytics-command-bar .analytics-nav-links {
+    width: 100%;
+    min-width: 0;
+  }
+  .analytics-command-bar .analytics-nav-controls {
+    width: 100%;
+    margin: 0;
+    justify-content: flex-start;
+  }
+}
+@media (min-width: 900px) {
+  .analytics-report {
+    gap: 18px;
+  }
+  .analytics-overview {
+    min-height: 250px;
   }
 }

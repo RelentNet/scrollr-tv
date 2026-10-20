@@ -193,6 +193,7 @@ func explainFix(ctx context.Context, issueKey string) AdminFix {
 // function over it: the three groups are the shape of the whole page and they
 // deserve a test that needs no database and no clock.
 type queueState struct {
+	ConsoleStatus string
 	CaseStatus    string
 	HasDraft      bool
 	DraftStatus   string
@@ -208,6 +209,12 @@ type queueState struct {
 // Discord queue again, where thirteen drafts sat pending since May because
 // nothing ever said what was waiting on whom.
 func (q queueState) group() (string, string) {
+	if q.ConsoleStatus == "dismissed" {
+		return queueHandled, "Dismissed. Bot replies are stopped until you restore this ticket."
+	}
+	if q.ConsoleStatus == "review" {
+		return queueNeedsYou, "Restored for review. Previous replies remain stopped."
+	}
 	if strings.EqualFold(strings.TrimSpace(q.CaseStatus), "closed") {
 		return queueHandled, "The ticket is closed."
 	}
@@ -260,7 +267,8 @@ func (q queueState) pendingReason() string {
 // ===== The queue ==================================================
 
 type AdminQueueRow struct {
-	TicketNumber string `json:"ticket_number"`
+	ConsoleStatus string `json:"console_status"`
+	TicketNumber  string `json:"ticket_number"`
 	Subject      string `json:"subject"`
 	UserEmail    string `json:"user_email,omitempty"`
 	Name         string `json:"name,omitempty"`
@@ -350,7 +358,7 @@ const queueSQL = `
 	)
 	SELECT c.ticket_number, coalesce(c.user_email, ''), coalesce(c.user_name, ''),
 	       coalesce(c.contact_source, ''), coalesce(c.logto_sub, ''), coalesce(c.account_source, ''), c.subject,
-	       coalesce(c.category, ''), coalesce(c.priority, ''), c.status,
+	       coalesce(c.category, ''), coalesce(c.priority, ''), c.status, c.console_status,
 	       coalesce(c.summary, ''), coalesce(c.os, ''), coalesce(c.linear_issue_key, ''),
 	       c.opened_at, c.updated_at,
 	       (SELECT max(m.created_at) FROM support_messages m
@@ -509,7 +517,7 @@ func loadQueueRows(ctx context.Context, limit int, autosend AutoSendState, now t
 
 		if err := rows.Scan(&r.TicketNumber, &r.UserEmail, &r.Name,
 			&r.ContactSource, &r.AccountSubject, &accountSource, &r.Subject,
-			&r.Category, &r.Priority, &r.Status, &r.Summary, &r.OS, &issueKey,
+			&r.Category, &r.Priority, &r.Status, &r.ConsoleStatus, &r.Summary, &r.OS, &issueKey,
 			&r.OpenedAt, &r.UpdatedAt, &lastUser, &lastSent,
 			&draftID, &draftStatus, &disposition, &dispositionReason, &holdUntil, &draftCreated,
 			&draftBody, &editedBody, &intervened,
@@ -541,6 +549,7 @@ func loadQueueRows(ctx context.Context, limit int, autosend AutoSendState, now t
 		r.Hold = buildHold(holdUntil, r.DraftStatus, r.Disposition, autosend.Armed, now)
 		r.Group, r.GroupReason = queueState{
 			CaseStatus:    r.Status,
+			ConsoleStatus: r.ConsoleStatus,
 			HasDraft:      draftID != nil,
 			DraftStatus:   r.DraftStatus,
 			Disposition:   r.Disposition,
@@ -715,6 +724,7 @@ type AdminSimilarCase struct {
 }
 
 type AdminCaseDetail struct {
+	ConsoleStatus       string     `json:"console_status"`
 	TicketNumber        string     `json:"ticket_number"`
 	Subject             string     `json:"subject"`
 	UserEmail           string     `json:"user_email,omitempty"`
@@ -775,7 +785,7 @@ type AdminCaseDetail struct {
 const caseSQL = `
 	SELECT c.ticket_number, c.subject, coalesce(c.user_email, ''), coalesce(c.user_name, ''),
 	       coalesce(c.contact_source, ''), coalesce(c.logto_sub, ''), coalesce(c.account_source, ''),
-	       c.status, coalesce(c.category, ''), coalesce(c.priority, ''), coalesce(c.summary, ''),
+	       c.status, c.console_status, coalesce(c.category, ''), coalesce(c.priority, ''), coalesce(c.summary, ''),
 	       coalesce(c.linear_issue_key, ''), coalesce(c.discord_thread_id, ''),
 	       c.opened_at, c.updated_at, c.closed_at,
 	       coalesce(s.plan, ''), coalesce(s.status, ''), coalesce(s.lifetime, false),
@@ -827,7 +837,7 @@ func buildAdminCase(ctx context.Context, ticket string) (*AdminCaseDetail, error
 	var lifetime bool
 	err := platform.DBPool.QueryRow(ctx, caseSQL, ticket).Scan(
 		&d.TicketNumber, &d.Subject, &d.UserEmail, &d.UserName, &d.ContactSource,
-		&d.LogtoSub, &accountSource, &d.Status,
+		&d.LogtoSub, &accountSource, &d.Status, &d.ConsoleStatus,
 		&d.Category, &d.Priority, &d.Summary, &d.LinearIssueKey,
 		&d.DiscordThreadID, &d.OpenedAt, &d.UpdatedAt, &d.ClosedAt,
 		&d.Plan, &planStatus, &lifetime, &d.SubscriptionPresent)
@@ -871,6 +881,7 @@ func buildAdminCase(ctx context.Context, ticket string) (*AdminCaseDetail, error
 	}
 	d.Group, d.GroupReason = queueState{
 		CaseStatus:    d.Status,
+		ConsoleStatus: d.ConsoleStatus,
 		HasDraft:      d.Draft != nil,
 		DraftStatus:   draftStatusOf(d.Draft),
 		Disposition:   draftDispositionOf(d.Draft),

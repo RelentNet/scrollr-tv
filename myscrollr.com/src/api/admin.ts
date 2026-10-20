@@ -441,6 +441,7 @@ export interface SimilarCase {
 }
 
 export interface CaseDetail {
+  console_status?: '' | 'dismissed' | 'review'
   ticket_number: string
   subject: string
   user_email?: string
@@ -692,6 +693,19 @@ export const adminApi = {
 
   askUser: (getToken: Token, draftId: number, question: string) =>
     draftAction<CaseDetail>(getToken, draftId, 'ask', { question }),
+
+  dismissCase: (getToken: Token, ticket: string) =>
+    adminFetch<CaseDetail>(
+      `/admin/support/case/${encodeURIComponent(ticket)}/dismiss`,
+      getToken,
+      { method: 'POST' },
+    ),
+  restoreCase: (getToken: Token, ticket: string) =>
+    adminFetch<CaseDetail>(
+      `/admin/support/case/${encodeURIComponent(ticket)}/restore`,
+      getToken,
+      { method: 'POST' },
+    ),
 
   skipDraft: (getToken: Token, draftId: number) =>
     draftAction<CaseDetail>(getToken, draftId, 'skip'),

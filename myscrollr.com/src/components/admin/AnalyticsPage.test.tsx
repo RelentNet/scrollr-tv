@@ -669,7 +669,7 @@ describe('RevenueContent', () => {
     expect(html).toContain('>2<')
     expect(html).toContain('Plan mix')
     expect(html).toContain('lifetime')
-    expect(html).toContain('monthly')
+    expect(html).toContain('Monthly')
     expect(html).toContain('Earnings in USD')
     expect(html).toContain('Earnings in EUR')
     expect(html).toContain('$123.45 USD')
@@ -806,7 +806,7 @@ describe('SupportContent', () => {
   it('asks its question and answers it in one sentence', async () => {
     const html = await render()
     expect(html).toContain(
-      'How much are we owing people, and how fast do we pay it back?',
+      'What needs attention, and how quickly do we respond?',
     )
     expect(html).toContain('3 people')
     expect(html).toContain('are waiting on us.')

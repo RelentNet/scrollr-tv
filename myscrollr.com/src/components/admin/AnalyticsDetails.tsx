@@ -1,4 +1,5 @@
 import { useId, useRef } from 'react'
+import { ArrowUpRight, Info, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 /** Native modal keeps focus, Escape and the background's scroll position intact. */
@@ -23,17 +24,21 @@ export function AnalyticsDetails({
         onClick={() => dialog.current?.showModal()}
       >
         {compact ? (
-          <span aria-hidden>i</span>
+          <Info size={15} aria-hidden />
         ) : (
           <>
-            {title} <span aria-hidden>↗</span>
+            {title} <ArrowUpRight size={17} aria-hidden />
           </>
         )}
       </button>
       <dialog
         ref={dialog}
         aria-labelledby={titleId}
-        className="analytics-drawer"
+        className={
+          compact
+            ? 'analytics-drawer analytics-drawer-info'
+            : 'analytics-drawer'
+        }
         onClick={(event) => {
           if (event.target === event.currentTarget) dialog.current?.close()
         }}
@@ -42,7 +47,7 @@ export function AnalyticsDetails({
           <header>
             <h2 id={titleId}>{title}</h2>
             <button type="button" onClick={() => dialog.current?.close()}>
-              Close <span aria-hidden>×</span>
+              Close <X size={15} aria-hidden />
             </button>
           </header>
           <div className="analytics-detail-content">{children}</div>

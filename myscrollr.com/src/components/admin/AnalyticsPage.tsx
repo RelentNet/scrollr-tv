@@ -643,6 +643,7 @@ export function SectionNav({
               key={section.value}
               type="button"
               onClick={() => onView(section.value)}
+              aria-label={section.label}
               aria-current={current ? 'true' : undefined}
               className={
                 current
@@ -650,7 +651,18 @@ export function SectionNav({
                   : 'flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold text-base-content/60 hover:text-base-content focus-visible:outline-2 focus-visible:outline-primary'
               }
             >
-              <span className="truncate">{section.label}</span>
+              <span className="truncate">
+                {section.value === 'desktop' ? (
+                  <>
+                    <span className="analytics-tab-long">Desktop usage</span>
+                    <span className="analytics-tab-short" aria-hidden>
+                      Desktop
+                    </span>
+                  </>
+                ) : (
+                  section.label
+                )}
+              </span>
               <span
                 className={`size-2 shrink-0 rounded-full ${tone.dot}`}
                 aria-hidden
@@ -764,6 +776,19 @@ export interface Fact {
   value: string | null
 }
 
+/** Keep the reported value intact while giving its unit a quieter visual weight. */
+function MetricText({ value }: { value: string | null }) {
+  const parts = value?.match(/^(.*) ([A-Z]{3}|h)$/)
+  return parts ? (
+    <>
+      {parts[1]}
+      <span className="analytics-metric-unit"> {parts[2]}</span>
+    </>
+  ) : (
+    <>{value ?? 'unknown'}</>
+  )
+}
+
 /**
  * A section: the question, the verdict, one sentence with the number that
  * answers it, one chart, the facts, and a note about what the numbers do and
@@ -823,7 +848,9 @@ function Question({
                 }
               >
                 <dt>{fact.label}</dt>
-                <dd>{fact.value ?? 'unknown'}</dd>
+                <dd>
+                  <MetricText value={fact.value} />
+                </dd>
               </div>
             ))}
           </dl>
@@ -2417,6 +2444,7 @@ export function RevenueContent({
           buckets={r.earnings.curve}
           step={r.earnings.curve_step}
           title="Net earnings over time"
+          zeroLabel="Net earnings are zero throughout this window."
           unit={currency.toUpperCase()}
           format={money}
         />
@@ -2653,12 +2681,16 @@ function PlanMixTable({ rows }: { rows: Array<PlanMixRow> }) {
               key={`${row.plan}-${row.status}-${row.lifetime}`}
               className="border-t border-base-300/50"
             >
-              <td className="py-1 pr-3 capitalize">{row.tier || row.plan}</td>
+              <td className="py-1 pr-3">{planLabel(row.tier || row.plan)}</td>
               <td className="py-1 pr-3">
-                {row.lifetime ? 'lifetime' : row.interval || '—'}
+                {row.lifetime
+                  ? 'Lifetime'
+                  : row.interval
+                    ? planLabel(row.interval)
+                    : '—'}
               </td>
-              <td className="py-1 pr-3">{row.status}</td>
-              <td className="py-1 pr-3">{row.paying ? 'yes' : 'no'}</td>
+              <td className="py-1 pr-3">{planLabel(row.status)}</td>
+              <td className="py-1 pr-3">{row.paying ? 'Yes' : 'No'}</td>
               <td className="py-1 text-right tabular-nums">{num(row.count)}</td>
             </tr>
           ))}
@@ -2765,8 +2797,7 @@ function paying(count: number): ReactNode {
   return count > 0 ? `${num(count)} paying` : undefined
 }
 
-const SUPPORT_QUESTION =
-  'How much are we owing people, and how fast do we pay it back?'
+const SUPPORT_QUESTION = 'What needs attention, and how quickly do we respond?'
 
 /**
  * Who answered is the queue's own classification counted up over the window —
@@ -2853,6 +2884,7 @@ export function SupportContent({
           buckets={s.completed_curve}
           step={s.curve_step}
           title="Tickets finished over time"
+          zeroLabel="No tickets completed in this window."
           unit="Completed tickets per bucket"
         />
       }

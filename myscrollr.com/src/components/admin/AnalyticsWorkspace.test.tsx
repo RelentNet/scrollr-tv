@@ -150,7 +150,7 @@ describe('Analytics report isolation', () => {
     )
     for (const label of ['Revenue', 'Support', 'Desktop usage', 'Growth']) {
       const button = Array.from(host.querySelectorAll('nav button')).find(
-        (b) => b.textContent === label,
+        (b) => b.getAttribute('aria-label') === label,
       ) as HTMLButtonElement
       await act(() => button.click())
       expect(select.closest('[hidden]')).toBeNull()

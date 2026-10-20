@@ -1996,6 +1996,92 @@ html:has(.analytics-drawer[open]) {
   background: color-mix(in srgb, var(--analytics-series) 4%, transparent);
 }
 /* A shared reading rhythm across Growth, Revenue and Support details. */
+.analytics-presence-metrics .analytics-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+}
+.analytics-presence-metrics .analytics-facts > div {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  align-items: start;
+  gap: 16px;
+  padding-block: 24px;
+}
+.analytics-presence-metrics dt {
+  min-height: 40px;
+  max-width: 26ch;
+  line-height: 1.5;
+}
+.analytics-presence-metrics dd {
+  max-width: 100%;
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: clamp(22px, 3vw, 32px);
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+}
+.analytics-return-rates {
+  display: grid;
+}
+.analytics-retention-row {
+  padding-block: 24px;
+  border-bottom: 1px solid var(--analytics-line);
+}
+.analytics-retention-row header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.analytics-retention-row h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.analytics-retention-row header strong {
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+}
+.analytics-retention-row > p {
+  margin-top: 12px;
+  color: var(--analytics-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.analytics-return-track {
+  height: 6px;
+  margin-top: 12px;
+  border-radius: 3px;
+  background: var(--analytics-line);
+  overflow: hidden;
+}
+.analytics-return-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--analytics-series);
+}
+.analytics-earnings-summary {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.6fr) minmax(0, 1.4fr);
+  align-items: start;
+  gap: 24px;
+}
+.analytics-currency-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 24px;
+}
+@media (max-width: 600px) {
+  .analytics-earnings-summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .analytics-presence-metrics .analytics-facts {
+    gap: 0 16px;
+  }
+}
 :root:not(.dark) .analytics-detail-content .text-warning {
   color: #946000;
 }

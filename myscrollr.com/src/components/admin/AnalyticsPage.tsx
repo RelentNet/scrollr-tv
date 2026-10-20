@@ -1998,7 +1998,6 @@ export function DesktopContent({
     )
   }
 
-  const d1 = d.retention.d1
   const sentence = (
     <>
       <Headline verdict={verdict}>
@@ -2075,27 +2074,32 @@ export function DesktopContent({
                 <>
                   {' '}
                   <Section id="presence" title="Time spent with Scrollr">
-                    <FactList
-                      facts={[
-                        {
-                          label: 'App open - total hours',
-                          value: factOf(d.user_hours, formatHours),
-                        },
-                        {
-                          label: 'Ticker visible - total hours',
-                          value: factOf(d.ticker_user_hours, formatHours),
-                        },
-                        {
-                          label:
-                            'Ticker screen-hours - includes multiple screens',
-                          value: factOf(d.screen_hours, formatHours),
-                        },
-                        {
-                          label: 'Peak simultaneous users',
-                          value: d.peak.available ? num(d.peak.users) : null,
-                        },
-                      ]}
-                    />
+                    <p className="analytics-detail-caption">
+                      {periodLabel(period)} · totals across the selected users
+                    </p>
+                    <div className="analytics-presence-metrics">
+                      <FactList
+                        facts={[
+                          {
+                            label: 'App open - total hours',
+                            value: factOf(d.user_hours, formatHours),
+                          },
+                          {
+                            label: 'Ticker visible - total hours',
+                            value: factOf(d.ticker_user_hours, formatHours),
+                          },
+                          {
+                            label:
+                              'Ticker screen-hours - includes multiple screens',
+                            value: factOf(d.screen_hours, formatHours),
+                          },
+                          {
+                            label: 'Peak simultaneous users',
+                            value: d.peak.available ? num(d.peak.users) : null,
+                          },
+                        ]}
+                      />
+                    </div>
                     <DefinitionDisclosure>
                       <p>{d.definition}</p>
                       <CoverageNote coverage={coverage!} />
@@ -2124,17 +2128,7 @@ export function DesktopContent({
                         : 'All mature cohorts · independent of time, OS, version and plan filters.'
                     }
                   >
-                    <FactList
-                      facts={[
-                        {
-                          label: 'Came back the next day',
-                          value: d1.available
-                            ? `${num(d1.returned)} of ${num(d1.eligible)}`
-                            : null,
-                        },
-                      ]}
-                    />
-                    <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="analytics-return-rates">
                       <RetentionCard metric={d.retention.d1} />
                       <RetentionCard metric={d.retention.d7} />
                       <RetentionCard metric={d.retention.d30} />
@@ -2223,13 +2217,23 @@ function WidgetRanking({ widgets }: { widgets: DesktopUsage['widgets'] }) {
 
 function RetentionCard({ metric }: { metric: RetentionMetric }) {
   return (
-    <Card title={`Day ${metric.day} retention`}>
+    <section className="analytics-retention-row">
+      <header>
+        <h3>{`Day ${metric.day} retention`}</h3>
+        {metric.available && <strong>{pct(metric.rate)}</strong>}
+      </header>
       {metric.available ? (
         <>
-          <Big>{pct(metric.rate)}</Big>
-          <p className="mt-1 text-sm text-base-content/60">
+          <div className="analytics-return-track" aria-hidden="true">
+            <span
+              style={{
+                width: `${Math.max(0, Math.min(100, metric.rate * 100))}%`,
+              }}
+            />
+          </div>
+          <p>
             {num(metric.returned)} of {num(metric.eligible)} mature accounts
-            returned on exactly day {metric.day}
+            returned on exactly day {metric.day}.
           </p>
         </>
       ) : (
@@ -2237,7 +2241,7 @@ function RetentionCard({ metric }: { metric: RetentionMetric }) {
           {metric.note ?? 'Collecting history.'}
         </p>
       )}
-    </Card>
+    </section>
   )
 }
 
@@ -2494,7 +2498,7 @@ export function RevenueContent({
                       {r.earnings.coverage.partial && (
                         <CoverageNote coverage={r.earnings.coverage} />
                       )}
-                      <div className="grid items-start gap-4 lg:grid-cols-2">
+                      <div className="analytics-earnings-summary">
                         <Card
                           title={`Net (${r.earnings.primary_currency.toUpperCase()})`}
                           label={windowLabel}
@@ -2545,7 +2549,7 @@ export function RevenueContent({
                         <h3 className="text-sm font-semibold text-base-content/70">
                           Lifetime
                         </h3>
-                        <div className="mt-2 grid gap-4 lg:grid-cols-2">
+                        <div className="analytics-currency-grid mt-2">
                           {(r.earnings.lifetime ?? []).map((c) => (
                             <EarningsBlock
                               key={c.currency}

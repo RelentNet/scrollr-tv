@@ -467,13 +467,11 @@ describe('DesktopContent', () => {
     expect(html).toContain('Peak simultaneous users')
     // 2+ screens bucket, day-1 retention, and the widget with most hours.
     expect(html).toContain('Using two or more monitors')
-    expect(html).toContain('Came back the next day')
+    expect(html).toContain('Day 1 retention')
     expect(html).toContain(
       'All mature cohorts · independent of time, OS, version and plan filters.',
     )
-    expect(html.split('Usage details')[0]).not.toContain(
-      'Came back the next day',
-    )
+    expect(html.split('Usage details')[0]).not.toContain('Day 1 retention')
     expect(html).toContain('12 of 20')
     expect(html).toContain('What stays on screen')
     expect(html).toContain('NFL')
@@ -491,6 +489,10 @@ describe('DesktopContent', () => {
     expect(html).toContain('>19<')
     expect(html).toContain('Day 1 retention')
     expect(html).toContain('60%')
+    expect(html).toContain(
+      '12 of 20 mature accounts returned on exactly day 1.',
+    )
+    expect(html).not.toContain('>0%</strong>')
     expect(
       html.match(/No cohort is old enough\./g)?.length,
     ).toBeGreaterThanOrEqual(2)

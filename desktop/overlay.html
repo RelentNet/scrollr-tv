@@ -40,6 +40,11 @@
       }
       html[data-bg="solid"][data-mode="dark"], html[data-bg="solid"][data-mode="dark"] body { background: #141420; }
       html[data-bg="solid"][data-mode="light"], html[data-bg="solid"][data-mode="light"] body { background: #ffffff; }
+      /* The app's style.css paints html/body with the theme surface;
+         the bar paints its own, so in transparent mode nothing else may. */
+      html[data-bg="transparent"], html[data-bg="transparent"] body, html[data-bg="transparent"] #root {
+        background: transparent !important;
+      }
       #root { width: 100%; height: 100%; }
       .overlay-msg {
         font: 14px/1.5 system-ui, sans-serif;

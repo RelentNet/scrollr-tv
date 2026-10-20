@@ -37,13 +37,17 @@ func (p AnalyticsPopulation) Active() bool { return p.OS != "" || p.Version != "
 // Predicate accepts only a source-code SQL identifier. Values always use
 // parameters, appended after the caller's existing arguments.
 func (p AnalyticsPopulation) Predicate(sub string, args *[]any) string {
+	return p.PredicateAt(sub, args, time.Now().UTC())
+}
+
+func (p AnalyticsPopulation) PredicateAt(sub string, args *[]any, now time.Time) string {
 	bind := func(value any) string {
 		*args = append(*args, value)
 		return fmt.Sprintf("$%d", len(*args))
 	}
 	clauses := []string{"true"}
 	if p.OS != "" || p.Version != "" {
-		session := "p.logto_sub = " + sub + " AND p.hour >= " + bind(time.Now().UTC().AddDate(0, 0, -90)) + " AND p.hour < " + bind(time.Now().UTC())
+		session := "p.logto_sub = " + sub + " AND p.hour >= " + bind(now.AddDate(0, 0, -90)) + " AND p.hour < " + bind(now)
 		if p.OS != "" {
 			session += " AND p.os = " + bind(p.OS)
 		}

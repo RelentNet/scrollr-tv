@@ -559,7 +559,7 @@ func loadPresenceRetention(ctx context.Context, r *PresenceRetention, f desktopF
 		}
 		args := []any{m.n, today, oldest}
 		population := platform.AnalyticsPopulation{OS: f.os, Version: f.version, Plan: f.plan}
-		where := population.Predicate("a.logto_sub", &args)
+		where := population.PredicateAt("a.logto_sub", &args, now)
 		if err := platform.DBPool.QueryRow(ctx, `
 			SELECT count(*),
 			       count(*) FILTER (WHERE EXISTS (

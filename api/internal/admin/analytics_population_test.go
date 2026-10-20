@@ -43,6 +43,22 @@ func TestPopulationMatchesSameSessionAndFiltersGrowthAndCustomers(t *testing.T) 
 	if err != nil || !paying.Available || paying.Paying != 1 {
 		t.Fatalf("paying=%+v err=%v", paying, err)
 	}
+	seedLedger(t, billing.Ledger{
+		FetchedAt: now,
+		Charges: []billing.ChargeLite{
+			{ID: "ch_a", Customer: "cus_a", Paid: true, Status: "succeeded", Amount: 1000, Created: hour},
+			{ID: "ch_b", Customer: "cus_b", Paid: true, Status: "succeeded", Amount: 200, Created: hour},
+		},
+		Transactions: []billing.BalanceTxn{
+			{ID: "txn_a", Source: "ch_a", Type: "charge", Currency: "usd", Net: 1000, Created: hour},
+			{ID: "txn_b", Source: "ch_b", Type: "charge", Currency: "usd", Net: 200, Created: hour},
+			{ID: "refund_b", SourceCharge: "ch_b", Type: "refund", Currency: "usd", Net: -50, Created: hour},
+		},
+	})
+	revenue := loadRevenue(ctx, period, now)
+	if !revenue.Earnings.Available || revenue.Earnings.Net.Value != 150 || revenue.NewPaying.InPeriod.Value != 1 || revenue.PayingNow.Paying != 1 {
+		t.Fatalf("filtered revenue=%+v", revenue)
+	}
 	free, _ := platform.WithAnalyticsPopulation(context.Background(), "", "", "free")
 	got = loadAudience(free, period, true, now)
 	if !got.Available || got.Total != 2 {

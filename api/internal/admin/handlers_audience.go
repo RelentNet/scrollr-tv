@@ -154,8 +154,8 @@ func loadAudience(ctx context.Context, period Period, excludeStaff bool, now tim
 		// or "never set up" (total − set up) would subtract staff who use
 		// the app from a total that no longer contains them.
 		args := []any{}
-		where := population.Predicate("logto_sub", &args)
-		rows, err := platform.DBPool.Query(ctx, `SELECT logto_sub FROM user_preferences WHERE `+where, args...)
+		where := population.Predicate("u.logto_sub", &args)
+		rows, err := platform.DBPool.Query(ctx, `SELECT u.logto_sub FROM user_preferences u WHERE `+where, args...)
 		if err != nil {
 			log.Printf("[Admin] audience set-up count: %v", err)
 		} else {

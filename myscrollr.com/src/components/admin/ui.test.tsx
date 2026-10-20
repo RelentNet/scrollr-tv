@@ -17,7 +17,7 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-function setup(scoped = false) {
+function setup(scoped = false, cacheTime = 0) {
   const calls: Array<ReturnType<typeof deferred<string>>> = []
   function Probe({ period }: { period: number }) {
     const load = useCallback(() => {
@@ -25,7 +25,11 @@ function setup(scoped = false) {
       calls.push(d)
       return d.promise
     }, [period])
-    const report = useReport(load, scoped ? String(period) : undefined)
+    const report = useReport(
+      load,
+      scoped ? String(period) : undefined,
+      cacheTime,
+    )
     return (
       <Loaded report={report} label="things">
         {(data) => <p>{data}</p>}
@@ -40,6 +44,25 @@ function setup(scoped = false) {
 }
 
 describe('useReport', () => {
+  it('restores only the matching cached population while revalidating', async () => {
+    const { calls, container, render } = setup(true, 60_000)
+    await render(1)
+    await act(async () => calls[0].resolve('Windows users'))
+    await render(2)
+    expect(container.textContent).not.toContain('Windows users')
+    await act(async () => calls[1].resolve('Mac users'))
+    await render(1)
+    expect(container.textContent).toContain('Windows users')
+    expect(container.textContent).not.toContain('Mac users')
+    expect(container.textContent).toContain('Updating things')
+    await act(async () => calls[2].reject(new Error('Unavailable')))
+    expect(container.textContent).not.toContain('Windows users')
+    await render(2)
+    await render(1)
+    expect(container.textContent).not.toContain('Windows users')
+    await act(async () => calls[4].resolve('New Windows users'))
+    expect(container.textContent).toBe('New Windows users')
+  })
   it('clears data for a different population while ignoring a superseded result', async () => {
     const { calls, container, render } = setup(true)
     await render(1)

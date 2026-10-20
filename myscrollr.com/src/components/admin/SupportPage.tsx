@@ -53,6 +53,7 @@ import {
 } from '@/lib/supportConsole'
 import { useGetToken } from '@/hooks/useGetToken'
 import { parseSupportSearch } from '@/lib/adminSearch'
+import { splitSupportMessage } from '@/lib/supportMessage'
 
 /**
  * The Support section, rebuilt around people (REL-266).
@@ -315,62 +316,95 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
   )
 }
 
-/**
- * The thread, oldest first.
- *
- * Every message is a card except an internal note, which is a left-rule block:
- * a note is us talking to ourselves, and giving it the same card as the words
- * a customer wrote puts them at the same weight.
- */
+/** Customer messages and delivered replies lead; bot work stays inspectable. */
 function Conversation({ detail }: { detail: CaseDetail }) {
   const messages = detail.messages ?? []
-  if (messages.length === 0) {
+  const conversation = messages.filter(
+    (message) => message.kind === 'user' || message.kind === 'sent',
+  )
+  const activity = messages.filter(
+    (message) => message.kind !== 'user' && message.kind !== 'sent',
+  )
+  const renderMessage = (
+    m: NonNullable<CaseDetail['messages']>[number],
+    i: number,
+  ) => {
+    const { text, diagnostics } = splitSupportMessage(m.body || '')
     return (
-      <div className="flex flex-col gap-1.5">
-        <Eyebrow>The conversation</Eyebrow>
-        <p className="text-sm text-base-content/50">
-          Nothing is on record for this ticket. The case database only carries
-          messages the API saw or backfilled from osTicket, so an older ticket
-          answered entirely inside osTicket can look empty here.
-        </p>
-      </div>
+      <article
+        key={`${m.created_at}-${i}`}
+        className="min-w-0 space-y-2 border-b border-hairline pb-5"
+      >
+        <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <Eyebrow>{KIND_LABEL[m.kind] ?? m.kind}</Eyebrow>
+          <time
+            dateTime={m.created_at}
+            className="text-xs text-base-content/45"
+          >
+            {new Date(m.created_at).toLocaleString()}
+            {m.superseded && ' · superseded'}
+          </time>
+        </header>
+        <MessageBody
+          text={
+            text ||
+            (diagnostics ? 'Attached system diagnostics.' : '(empty message)')
+          }
+        />
+        {diagnostics && (
+          <details className="rounded-lg bg-base-200/40 px-3">
+            <summary className="min-h-11 cursor-pointer py-3 text-xs font-medium text-base-content/60">
+              System diagnostics · attachment
+            </summary>
+            <pre className="max-h-80 overflow-auto pb-3 text-xs whitespace-pre-wrap text-base-content/55 [overflow-wrap:anywhere]">
+              {diagnostics}
+            </pre>
+          </details>
+        )}
+      </article>
     )
   }
   return (
-    <div className="flex flex-col gap-4">
-      {messages.map((m, i) => {
-        const note = m.kind === 'note'
-        return (
-          <div key={`${m.created_at}-${i}`} className="flex flex-col gap-1.5">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <Eyebrow>{KIND_LABEL[m.kind] ?? m.kind}</Eyebrow>
-              <span className="font-mono text-xs text-base-content/45">
-                {new Date(m.created_at).toLocaleString()}
-                {m.superseded && ' · superseded'}
-              </span>
-            </div>
-            {note ? (
-              <p className="border-l-2 border-base-300 pl-4 text-[13px] whitespace-pre-wrap text-base-content/65">
-                {m.body || '(empty)'}
-              </p>
-            ) : (
-              <p
-                className={`rounded-xl bg-base-150 px-4 py-3.5 text-sm leading-[1.55] whitespace-pre-wrap ring-1 ring-hairline ${
-                  m.kind === 'ai_draft'
-                    ? 'text-base-content/55 italic'
-                    : 'text-base-content/85'
-                }`}
-              >
-                {m.body || '(empty)'}
-              </p>
-            )}
-          </div>
-        )
-      })}
-      <p className="text-xs text-base-content/45">
-        Oldest first. Drafts that were never sent are shown too, marked as such
-        — this is the record of what we wrote, not only of what they read.
+    <div className="flex min-w-0 flex-col gap-5">
+      {conversation.length ? (
+        conversation.map(renderMessage)
+      ) : (
+        <p className="text-sm text-base-content/55">
+          No customer messages or delivered replies are recorded here yet. Older
+          conversations may only be in osTicket.
+        </p>
+      )}
+      {activity.length > 0 && (
+        <Disclosure
+          label={`Bot activity & internal notes (${activity.length})`}
+        >
+          <div className="space-y-5">{activity.map(renderMessage)}</div>
+        </Disclosure>
+      )}
+    </div>
+  )
+}
+
+function MessageBody({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const long = text.length > 700
+  return (
+    <div>
+      <p
+        className={`text-sm leading-relaxed whitespace-pre-wrap text-base-content/85 [overflow-wrap:anywhere] ${long && !expanded ? 'line-clamp-6' : ''}`}
+      >
+        {text}
       </p>
+      {long && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+          className="min-h-11 cursor-pointer text-xs font-semibold text-primary hover:underline"
+        >
+          {expanded ? 'Show less' : 'Read full message'}
+        </button>
+      )}
     </div>
   )
 }
@@ -860,6 +894,14 @@ function CaseConversation({ detail }: { detail: CaseDetail }) {
         <HoldBanner hold={detail.hold} autosend={detail.autosend} />
       )}
 
+      <a
+        href={`https://support.myscrollr.com/scp/tickets.php?number=${encodeURIComponent(detail.ticket_number)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex min-h-11 w-fit items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+      >
+        Open in osTicket <ExternalLink size={12} aria-hidden />
+      </a>
       <Conversation detail={detail} />
     </section>
   )

@@ -25,13 +25,11 @@ import { useGetToken } from '@/hooks/useGetToken'
  * proven; the server did that before this case ever reached a queue, and the
  * only thing a person adds is responsibility for the click.
  *
- * Send is the one action that cannot be undone, so it is the one action that
- * asks twice. Skip, hold, link, unlink and file go through on the first click
- * on purpose: a tool that makes you confirm everything is a tool you stop
- * using, and every one of those can be put back.
+ * Sending and dismissing a pending reply ask for confirmation. Dismiss keeps
+ * the ticket history but settles the draft without sending an email.
  */
 
-type Panel = 'none' | 'confirm-send' | 'ask' | 'link'
+type Panel = 'none' | 'confirm-send' | 'confirm-dismiss' | 'ask' | 'link'
 
 export type CaseEdits = { body: string; question: string; issueKey: string }
 
@@ -162,7 +160,7 @@ export default function CaseActions({
         <p className="rounded-xl bg-base-200/40 px-4 py-3 text-sm text-base-content/60 ring-1 ring-base-300/60">
           {draft
             ? `This draft is ${draft.status}, so there is nothing left to send on it. The issue link below is still yours to change.`
-            : 'There is no draft to act on. Link an issue, or answer this one in osTicket.'}
+            : 'No pending reply. Manage or delete unrelated email in osTicket; this console keeps its support history.'}
         </p>
       )}
 
@@ -259,20 +257,55 @@ export default function CaseActions({
             }}
           />
           <ActionButton
-            label="Skip"
+            label="Dismiss"
             icon={<SkipForward size={14} />}
             busy={busy === 'skip'}
             disabled={busy !== null}
-            onClick={() =>
-              run('skip', () => adminApi.skipDraft(getToken, draft.id))
-            }
+            onClick={() => setPanel('confirm-dismiss')}
           />
         </div>
       )}
 
+      {panel === 'confirm-dismiss' && pending && (
+        <div
+          role="group"
+          aria-label="Dismiss without replying"
+          className="mt-3 space-y-3 rounded-xl p-4 ring-1 ring-base-300/60"
+        >
+          <h3 className="font-semibold">No reply needed?</h3>
+          <p className="text-sm text-base-content/65">
+            Dismiss this pending reply without emailing anyone. The ticket and
+            conversation stay in the history. This does not delete the email or
+            block future messages.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <ActionButton
+              label="Dismiss without replying"
+              icon={<SkipForward size={14} />}
+              busy={busy === 'skip'}
+              disabled={busy !== null}
+              onClick={() =>
+                run(
+                  'skip',
+                  () => adminApi.skipDraft(getToken, draft.id),
+                  () => setPanel('none'),
+                )
+              }
+            />
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => setPanel('none')}
+              className="min-h-11 cursor-pointer rounded-lg px-3 text-sm hover:bg-base-200/60"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Send, confirmed ───────────────────────────────────────
-          The one confirmation on the page, in front of the one thing that
-          cannot be undone. Which verb it runs depends on whether the box
+          Review the recipient before sending a message. Which verb it runs depends on whether the box
           above still holds the draft: an untouched reply goes out as the
           draft, an edited one goes out as an edit and is recorded as one. */}
       {panel === 'confirm-send' && pending && (

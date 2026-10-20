@@ -10,6 +10,246 @@
   --analytics-ink: #087c65;
   --analytics-series: #08856e;
 }
+
+/* Controls keep their geometry while the selected report changes beneath them. */
+.analytics-command-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--color-base-100);
+  border-bottom: 1px solid var(--analytics-line);
+  padding-top: 8px;
+}
+.analytics-command-bar .analytics-nav {
+  border: 0;
+  padding-bottom: 8px;
+}
+.analytics-nav-controls > button {
+  width: 106px;
+  justify-content: center;
+}
+.analytics-population-slot {
+  display: grid;
+  min-height: 66px;
+  align-items: center;
+}
+.analytics-population-slot > * {
+  grid-area: 1 / 1;
+}
+.analytics-population-slot > [hidden] {
+  display: block;
+  visibility: hidden;
+  pointer-events: none;
+}
+.analytics-context {
+  color: var(--analytics-muted);
+  font-size: 12px;
+}
+.analytics-command-bar .analytics-filters {
+  margin: 0;
+}
+.analytics-command-bar .analytics-filters > div {
+  padding: 8px 0 12px;
+  background: none;
+  box-shadow: none;
+  gap: 12px;
+}
+.analytics-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.analytics-filter select {
+  width: 150px;
+}
+.analytics-filter-plan {
+  margin-left: auto;
+}
+.analytics-filters button {
+  width: 112px;
+}
+.analytics-filters button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.analytics-stage {
+  min-width: 0;
+  overflow-anchor: none;
+}
+.analytics-stage .analytics-sections {
+  display: grid;
+  gap: 0;
+}
+.analytics-stage .analytics-sections > div {
+  grid-area: 1 / 1;
+  min-width: 0;
+  opacity: 1;
+  transition:
+    opacity 180ms ease-out,
+    visibility 180ms;
+}
+.analytics-stage .analytics-sections > div[hidden] {
+  display: block;
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0;
+}
+.analytics-stage [aria-busy='true'] {
+  position: relative;
+}
+.analytics-stage [aria-busy='true'] > [role='status'] {
+  position: absolute;
+  right: 0;
+  top: -24px;
+  margin: 0;
+}
+.analytics-explore {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 18px 0;
+  border-top: 1px solid var(--analytics-line);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+.analytics-explore:hover {
+  color: var(--analytics-series);
+}
+.analytics-explore:focus-visible,
+.analytics-drawer button:focus-visible {
+  outline: 2px solid var(--analytics-series);
+  outline-offset: 3px;
+}
+.analytics-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  margin: 0;
+  padding: 0;
+  width: min(880px, 100%);
+  max-width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  color: var(--color-base-content);
+  background: var(--color-base-100);
+  border: 0;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+.analytics-drawer::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+html:has(.analytics-report) {
+  scrollbar-gutter: stable;
+}
+html:has(.analytics-drawer[open]) {
+  overflow: hidden;
+}
+.analytics-drawer[open] {
+  animation: analytics-panel-in 180ms ease-out;
+}
+.analytics-drawer-surface {
+  min-height: 100%;
+}
+.analytics-drawer-surface > header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--color-base-100);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 28px;
+  border-bottom: 1px solid var(--analytics-line);
+}
+.analytics-drawer-surface > header h2 {
+  font-size: 20px;
+  font-weight: 650;
+}
+.analytics-drawer-surface > header button {
+  min-height: 44px;
+  padding-inline: 12px;
+  cursor: pointer;
+}
+.analytics-detail-content {
+  padding: 28px;
+  display: grid;
+  gap: 32px;
+}
+.analytics-detail-content > *,
+.analytics-detail-content section,
+.analytics-detail-content .grid > * {
+  min-width: 0;
+}
+.analytics-detail-content > section {
+  border-top: 1px solid var(--analytics-line);
+  padding-top: 24px;
+}
+.analytics-detail-content .grid {
+  align-items: stretch;
+}
+.analytics-detail-content .rounded-xl {
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--analytics-line);
+}
+.analytics-detail-content .analytics-facts {
+  grid-template-columns: 1fr;
+}
+.analytics-detail-content .xl\:grid-cols-4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.analytics-detail-content .lg\:grid-cols-3 {
+  grid-template-columns: 1fr;
+}
+@keyframes analytics-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@media (max-width: 700px) {
+  .analytics-population-slot {
+    min-height: 106px;
+  }
+  .analytics-filter {
+    gap: 5px;
+  }
+  .analytics-filter select {
+    width: 112px;
+  }
+  .analytics-filter-plan {
+    margin-left: 0;
+  }
+  .analytics-command-bar .analytics-filters > div {
+    gap: 8px 12px;
+  }
+  .analytics-detail-content {
+    padding: 20px;
+  }
+  .analytics-drawer-surface > header {
+    padding: 12px 20px;
+  }
+  .analytics-detail-content .grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .analytics-stage .analytics-sections > div {
+    transition: none;
+  }
+  .analytics-drawer[open] {
+    animation: none;
+  }
+}
 .analytics-header {
   display: flex;
   align-items: center;
@@ -829,5 +1069,50 @@
   }
   .analytics-nav {
     padding-bottom: 12px;
+  }
+  .analytics-nav-controls {
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+  }
+  .analytics-nav-controls > button {
+    width: 40px;
+    flex-shrink: 0;
+  }
+  .analytics-nav-controls .refresh-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+  }
+  .analytics-nav-controls [role='group'] button {
+    padding-inline: 9px;
+    font-size: 12px;
+  }
+  .analytics-command-bar .analytics-filters > div {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px 8px;
+    padding-bottom: 4px;
+  }
+  .analytics-filter {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    font-size: 10px;
+  }
+  .analytics-filter select {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    font-size: 12px;
+    padding-inline: 6px;
+  }
+  .analytics-filters button {
+    grid-column: 1 / -1;
+    justify-self: end;
+    font-size: 12px;
   }
 }

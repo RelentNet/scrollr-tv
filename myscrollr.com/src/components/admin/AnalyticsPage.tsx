@@ -3,6 +3,8 @@ import { useCallback, useState } from 'react'
 import { SignupTrend } from './SignupTrend'
 import { AnalyticsTrend } from './AnalyticsTrend'
 import { ReportBoundary } from './ReportBoundary'
+import { AnalyticsDetails } from './AnalyticsDetails'
+import { AnalyticsStage } from './AnalyticsStage'
 import './analytics.css'
 import {
   Bars,
@@ -52,10 +54,7 @@ import type {
   Website,
   WidgetRow,
 } from '@/api/adminDashboard'
-import type {
-  DailyProductCount,
-  RetentionMetric,
-} from '@/api/adminProductAnalytics'
+import type { RetentionMetric } from '@/api/adminProductAnalytics'
 import type { AnalyticsView } from '@/lib/adminFormat'
 import type { Verdict } from '@/lib/overviewVerdicts'
 import type { Report } from './ui'
@@ -74,7 +73,6 @@ import {
   formatHours,
   formatMinor,
   formatWait,
-  periodFootnote,
   periodLabel,
   periodPhrase,
   plural,
@@ -157,6 +155,7 @@ function AnalyticsWorkspace() {
     navigate({
       search: (prev) => ({ ...prev, ...patch }),
       replace: true,
+      resetScroll: false,
     })
 
   const audience = useReport(
@@ -167,6 +166,7 @@ function AnalyticsWorkspace() {
       [getToken, period],
     ),
     period,
+    60_000,
   )
   const website = useReport(
     useCallback(
@@ -176,6 +176,7 @@ function AnalyticsWorkspace() {
       [getToken, period],
     ),
     period,
+    60_000,
   )
   const desktop = useReport(
     useCallback(
@@ -185,6 +186,7 @@ function AnalyticsWorkspace() {
       [getToken, os, period, plan, version],
     ),
     `${period}:${os ?? ''}:${version ?? ''}:${plan ?? ''}`,
+    60_000,
   )
   const revenue = useReport(
     useCallback(
@@ -194,6 +196,7 @@ function AnalyticsWorkspace() {
       [getToken, period],
     ),
     period,
+    60_000,
   )
   const support = useReport(
     useCallback(
@@ -203,6 +206,7 @@ function AnalyticsWorkspace() {
       [getToken, period],
     ),
     period,
+    60_000,
   )
   const week1Return = useReport(
     useCallback(
@@ -228,35 +232,64 @@ function AnalyticsWorkspace() {
             <h1>Analytics</h1>
             <p>How Scrollr is growing, and how people use it.</p>
           </div>
-          <span className="analytics-window">{periodLabel(period)}</span>
         </header>
-        <SectionNav
-          view={view}
-          period={period}
-          verdicts={sectionVerdicts}
-          refreshing={
-            view === 'growth'
-              ? [audience, website, desktop, week1Return].some((r) => r.loading)
-              : { desktop, revenue, support }[view].loading
-          }
-          onView={(next) => {
-            void setSearch({ view: next })
-          }}
-          onPeriod={(next) => setSearch({ period: next })}
-          onRefresh={() => {
-            if (view === 'growth') {
-              audience.retry()
-              website.retry()
-              desktop.retry()
-              week1Return.retry()
-              setRefresh((n) => n + 1)
-            } else if (view === 'desktop') desktop.retry()
-            else if (view === 'revenue') revenue.retry()
-            else support.retry()
-          }}
-        />
-        <div className="analytics-sections">
-          <div hidden={view !== 'growth'}>
+        <div className="analytics-command-bar">
+          <SectionNav
+            view={view}
+            period={period}
+            verdicts={sectionVerdicts}
+            refreshing={
+              view === 'growth'
+                ? [audience, website, desktop, week1Return].some(
+                    (r) => r.loading,
+                  )
+                : { desktop, revenue, support }[view].loading
+            }
+            onView={(next) => {
+              void setSearch({ view: next })
+            }}
+            onPeriod={(next) => setSearch({ period: next })}
+            onRefresh={() => {
+              if (view === 'growth') {
+                audience.retry()
+                website.retry()
+                desktop.retry()
+                week1Return.retry()
+                setRefresh((n) => n + 1)
+              } else if (view === 'desktop') desktop.retry()
+              else if (view === 'revenue') revenue.retry()
+              else support.retry()
+            }}
+          />
+          <div className="analytics-population-slot">
+            <div
+              hidden={view !== 'desktop'}
+              inert={view !== 'desktop'}
+              aria-hidden={view !== 'desktop'}
+            >
+              <DesktopFilters
+                data={desktop.data}
+                filters={{ os, version, plan }}
+                onChange={(next) => void setSearch(next)}
+              />
+            </div>
+            <p hidden={view === 'desktop'} className="analytics-context">
+              {view === 'growth'
+                ? 'Acquisition, setup and return visits'
+                : view === 'revenue'
+                  ? 'Payments, subscriptions and plan mix'
+                  : 'Response times, bot activity and your queue'}
+            </p>
+          </div>
+        </div>
+        <AnalyticsStage
+          transitionKey={`${view}:${period}:${os}:${version}:${plan}:${view === 'growth' ? audience.loading : { desktop, revenue, support }[view].loading}`}
+        >
+          <div
+            hidden={view !== 'growth'}
+            inert={view !== 'growth'}
+            aria-hidden={view !== 'growth'}
+          >
             <ReportBoundary
               label="Growth"
               resetKeys={[audience.data, website.data, desktop.data]}
@@ -283,7 +316,11 @@ function AnalyticsWorkspace() {
             </ReportBoundary>
             <SignupDiagnosticsSection period={period} refresh={refresh} />
           </div>
-          <div hidden={view !== 'desktop'}>
+          <div
+            hidden={view !== 'desktop'}
+            inert={view !== 'desktop'}
+            aria-hidden={view !== 'desktop'}
+          >
             <ReportBoundary
               label="Desktop usage"
               resetKeys={[desktop.data]}
@@ -295,10 +332,15 @@ function AnalyticsWorkspace() {
                 desktop={desktop}
                 filters={{ os, version, plan }}
                 onFilterChange={(next) => setSearch(next)}
+                showFilters={false}
               />
             </ReportBoundary>
           </div>
-          <div hidden={view !== 'revenue'}>
+          <div
+            hidden={view !== 'revenue'}
+            inert={view !== 'revenue'}
+            aria-hidden={view !== 'revenue'}
+          >
             <ReportBoundary
               label="Revenue"
               resetKeys={[revenue.data]}
@@ -311,7 +353,11 @@ function AnalyticsWorkspace() {
               />
             </ReportBoundary>
           </div>
-          <div hidden={view !== 'support'}>
+          <div
+            hidden={view !== 'support'}
+            inert={view !== 'support'}
+            aria-hidden={view !== 'support'}
+          >
             <ReportBoundary
               label="Support"
               resetKeys={[support.data]}
@@ -324,7 +370,7 @@ function AnalyticsWorkspace() {
               />
             </ReportBoundary>
           </div>
-        </div>
+        </AnalyticsStage>
       </div>
     </PageFrame>
   )
@@ -527,17 +573,10 @@ export function SectionNav({
           <RefreshButton
             onClick={onRefresh}
             loading={refreshing}
-            label={refreshing ? 'Updating…' : 'Refresh'}
+            label="Refresh"
           />
         )}
       </div>
-      <details className="analytics-nav-note">
-        <summary>Window & population</summary>
-        <p>
-          {periodFootnote(period)} Current totals and weekly cohorts keep their
-          own windows.
-        </p>
-      </details>
     </nav>
   )
 }
@@ -826,17 +865,14 @@ function FactList({ facts }: { facts: Array<Fact> }) {
 }
 
 /** Everything a section used to show, one click away and closed by default. */
-function MoreDetail({ children }: { children: ReactNode }) {
-  return (
-    <details className="analytics-detail rounded-xl ring-1 ring-base-300/60">
-      <summary className="cursor-pointer p-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-primary">
-        More detail
-      </summary>
-      <div className="space-y-8 border-t border-base-300/60 p-4">
-        {children}
-      </div>
-    </details>
-  )
+function MoreDetail({
+  children,
+  title,
+}: {
+  children: ReactNode
+  title: string
+}) {
+  return <AnalyticsDetails title={title}>{children}</AnalyticsDetails>
 }
 
 /** A Metric as a fact value: a formatted number, or null when unavailable. */
@@ -908,27 +944,20 @@ const GROWTH_QUESTION = 'Are new people showing up, and do they stick?'
 /**
  * "Signed up from the desktop app" reads Logto's own applicationId, so it is a
  * fact about the same population as the total rather than a PostHog count
- * subtracted from a Logto count. "Came back a second day" is the legacy
- * day-one retention series; when it says it is not available the fact reads
- * "unknown", never a zero.
+ * subtracted from a Logto count. Return visits have their own cohort report.
  */
 const GROWTH_NOTE =
-  'Sign-ups are counted from Logto. Each report states whether staff are excluded. "Finished setting up" means the account saved at least one widget. "Signed up from the desktop app" is the Logto application the account registered through; accounts with none recorded are neither. Sign-ups on the website are PostHog events on the site, a different count from Logto accounts. "Came back a second day" covers only accounts with usage analytics enabled.'
+  'Sign-ups are counted from Logto. Each report states whether staff are excluded. "Finished setting up" means the account saved at least one widget. "Signed up from the desktop app" is the Logto application the account registered through; accounts with none recorded are neither. Sign-ups on the website are PostHog events on the site, a different count from Logto accounts.'
 
 export function GrowthContent({
   period,
   verdict,
   audience,
   website,
-  desktop,
 }: GrowthContentProps) {
   const windowLabel = periodLabel(period)
   const a = audience.data
   const w = website.data
-  // Day-one return is the legacy 30-second daily series, the one measurement
-  // that records whether an account came back — not presence retention,
-  // which counts a different population.
-  const d1 = desktop.data?.legacy?.retention.d1
   const staffExcluded = [audience, website].some((r) => r.data?.staff_excluded)
 
   if (!a || !a.available || !a.new.available) {
@@ -977,10 +1006,6 @@ export function GrowthContent({
       label: 'Signed up on the website',
       value: w && w.available ? factOf(w.signups) : null,
     },
-    {
-      label: 'Came back a second day',
-      value: d1?.available ? num(d1.returned) : null,
-    },
   ]
 
   return (
@@ -1015,17 +1040,15 @@ export function GrowthContent({
         },
         {
           title: 'Separate measurements · different populations',
-          facts: facts.filter((fact) =>
-            ['Signed up on the website', 'Came back a second day'].includes(
-              fact.label,
-            ),
+          facts: facts.filter(
+            (fact) => fact.label === 'Signed up on the website',
           ),
         },
       ]}
       note={GROWTH_NOTE}
     >
       <Stamp at={a.generated_at} />
-      <MoreDetail>
+      <MoreDetail title="Acquisition details">
         {staffExcluded && <StaffExcludedBadge />}
         <Section
           id="accounts"
@@ -1034,57 +1057,35 @@ export function GrowthContent({
         >
           <div className="space-y-3">
             <Stamp at={a.generated_at} />
-            <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <Card title="Registered accounts" label="Current">
-                <Big>{num(a.total)}</Big>
-                <p className="mt-1 text-sm text-base-content/60">
-                  {a.staff_excluded
-                    ? `${num(a.excluded)} staff/test excluded`
-                    : 'staff included'}
-                </p>
-                <div className="mt-3 border-t border-base-300/60 pt-2">
-                  <Row label="Set up the app" value={num(a.set_up)} />
-                </div>
-              </Card>
-              <Card title="New accounts" label={windowLabel}>
-                <MetricValue metric={a.new}>
-                  <p className="mt-1 text-sm text-base-content/60">
-                    <DeltaBadge comparison={a.new.comparison} />
-                  </p>
-                </MetricValue>
-                <div className="mt-3">
-                  <Sparkline
-                    buckets={a.new_curve}
-                    step={a.curve_step}
-                    label="New accounts per bucket"
-                  />
-                </div>
-              </Card>
-              <Card
-                title="Signed in"
-                label={windowLabel}
-                note="Accounts whose last sign-in falls in the window. Someone using the app on a token that never expired is not counted; this is authentication, not usage."
-              >
-                <MetricValue metric={a.signed_in_in_period}>
-                  <p className="mt-1 text-sm text-base-content/60">
-                    <DeltaBadge comparison={a.signed_in_in_period.comparison} />
-                  </p>
-                </MetricValue>
-              </Card>
-              <Card
-                title="Lifetime registrations"
-                label="Current"
-                note="Only accounts that still exist. Purged accounts are known since local deletion tracking began; anything before that is unknown."
-              >
-                <Big>{num(a.lifetime_registrations)}</Big>
-                <div className="mt-3 border-t border-base-300/60 pt-2">
-                  <Row label="Known purged" value={num(a.known_purged)} />
-                </div>
-                <CoverageNote coverage={a.coverage} />
-              </Card>
-            </div>
+            <FactList
+              facts={[
+                { label: 'Registered accounts today', value: num(a.total) },
+                { label: 'Finished setting up the app', value: num(a.set_up) },
+                {
+                  label: `New accounts ${periodPhrase(period)}`,
+                  value: factOf(a.new),
+                },
+                {
+                  label: `Signed in ${periodPhrase(period)}`,
+                  value: factOf(a.signed_in_in_period),
+                },
+                {
+                  label: 'Lifetime registrations',
+                  value: num(a.lifetime_registrations),
+                },
+                { label: 'Known deleted accounts', value: num(a.known_purged) },
+              ]}
+            />
+            <CoverageNote coverage={a.coverage} />
             <DefinitionDisclosure>
               <p>{a.definition}</p>
+              <p>
+                Sign-ins measure authentication, not usage. A running app with a
+                valid token does not need to sign in again.
+              </p>
+              <p>
+                New accounts: <DeltaBadge comparison={a.new.comparison} />
+              </p>
             </DefinitionDisclosure>
           </div>
         </Section>
@@ -1486,6 +1487,7 @@ export interface DesktopContentProps {
   desktop: Report<DesktopUsage>
   filters: DesktopFilterQuery
   onFilterChange?: (filters: DesktopFilterQuery) => void
+  showFilters?: boolean
 }
 
 type WidgetSort = 'users' | 'user_hours' | 'screen_hours'
@@ -1511,7 +1513,7 @@ function FilterSelect({
 }) {
   const id = `desktop-filter-${name}`
   return (
-    <label htmlFor={id} className="flex items-center gap-2 text-sm">
+    <label htmlFor={id} className={`analytics-filter analytics-filter-${name}`}>
       <span className="text-base-content/60">{label}</span>
       <select
         id={id}
@@ -1549,14 +1551,10 @@ function DesktopFilters({
     ['version', 'Version'],
     ['plan', 'Plan (current)'],
   ] as const
-  const visible = fields.filter(
-    ([key]) => filters[key] || (data?.filters[key]?.length ?? 0) > 0,
-  )
-  if (!visible.length) return null
   return (
     <div className="analytics-filters">
       <div className="flex flex-wrap items-center gap-4 rounded-xl bg-base-200/30 p-3 ring-1 ring-base-300/60">
-        {visible.map(([key, label]) => (
+        {fields.map(([key, label]) => (
           <FilterSelect
             key={key}
             label={label}
@@ -1566,20 +1564,16 @@ function DesktopFilters({
             onChange={(value) => onChange({ ...filters, [key]: value })}
           />
         ))}
-        {active && (
-          <button
-            type="button"
-            className="min-h-10 rounded-lg px-3 text-sm text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary"
-            onClick={() =>
-              onChange({ os: undefined, version: undefined, plan: undefined })
-            }
-          >
-            Reset filters
-          </button>
-        )}
-        {data?.filters.note && (
-          <p className="text-xs text-base-content/60">{data.filters.note}</p>
-        )}
+        <button
+          type="button"
+          disabled={!active}
+          className="min-h-10 rounded-lg px-3 text-sm text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary"
+          onClick={() =>
+            onChange({ os: undefined, version: undefined, plan: undefined })
+          }
+        >
+          Reset filters
+        </button>
       </div>
     </div>
   )
@@ -1588,17 +1582,7 @@ function DesktopFilters({
 const DESKTOP_QUESTION = 'Who is actually using the app, and how much?'
 
 const DESKTOP_NOTE =
-  'Hours are added across everyone: two people for one hour each is two hours. Legacy 30-second ticker facts from older versions are kept separate and never mixed in.'
-
-/** The widget with the most screen time, as "NFL · 210.5 h". */
-function mostShownWidget(widgets: DesktopUsage['widgets']): string | null {
-  const rows = widgets.rows ?? []
-  if (rows.length === 0) return null
-  const top = rows.reduce((best, row) =>
-    row.user_hours > best.user_hours ? row : best,
-  )
-  return `${top.name} · ${formatHours(top.user_hours)}`
-}
+  'Measured by Scrollr while usage sharing is enabled. Hours are added across everyone: two people for one hour each is two hours. OS and version filters count each computer separately.'
 
 /**
  * Additions and removals carry no OS or version, so under a per-computer
@@ -1630,10 +1614,17 @@ export function DesktopContent({
   desktop,
   filters,
   onFilterChange = () => {},
+  showFilters = true,
 }: DesktopContentProps) {
-  const windowLabel = periodLabel(period)
   const d = desktop.data
-  const toolbar = (
+  const coverage = d && {
+    ...d.coverage,
+    note: d.coverage.note?.replace(
+      'Older builds still count in the legacy recently-seen figure. ',
+      '',
+    ),
+  }
+  const toolbar = showFilters && (
     <DesktopFilters data={d} filters={filters} onChange={onFilterChange} />
   )
 
@@ -1680,25 +1671,12 @@ export function DesktopContent({
       value: factOf(d.ticker_user_hours, formatHours),
     },
     {
-      label: 'Most people online at once',
-      value: d.peak.available ? num(d.peak.users) : null,
-    },
-    {
       label: 'Using two or more monitors',
       value: multiScreenUsers(d.screens_per_user),
     },
     {
       label: 'Came back the next day',
       value: d1.available ? `${num(d1.returned)} of ${num(d1.eligible)}` : null,
-    },
-    { label: 'Most-shown widget', value: mostShownWidget(d.widgets) },
-    {
-      label: `Widgets added ${periodPhrase(period)}`,
-      value: widgetChanges(d.widgets, 'added'),
-    },
-    {
-      label: `Widgets removed ${periodPhrase(period)}`,
-      value: widgetChanges(d.widgets, 'removed'),
     },
   ]
 
@@ -1721,123 +1699,59 @@ export function DesktopContent({
       facts={facts}
       toolbar={toolbar}
       visual={<WidgetRanking widgets={d.widgets} />}
-      note={[d.coverage.note, DESKTOP_NOTE].filter(Boolean).join(' ')}
+      note={[coverage?.note, DESKTOP_NOTE].filter(Boolean).join(' ')}
     >
       <Stamp at={d.generated_at} />
-      <MoreDetail>
+      <MoreDetail title="Usage details">
         <div className="flex flex-wrap items-center gap-3">
           {d.staff_excluded && <StaffExcludedBadge />}
           <Link to="/admin/versions" className={LINK}>
             Version adoption and error rates → Versions
           </Link>
         </div>
-        <CoverageNote coverage={d.coverage} />
+        <CoverageNote coverage={coverage!} />
 
-        <Section
-          id="presence"
-          title="Presence"
-          lede="App-running and ticker-shown time from the desktop presence reporter (1.6.7+)."
-        >
-          <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Card title="Unique app users" label={windowLabel}>
-              <MetricValue metric={d.unique_users}>
-                <p className="mt-1 text-sm text-base-content/60">
-                  <DeltaBadge comparison={d.unique_users.comparison} />
-                </p>
-              </MetricValue>
-            </Card>
-            {(
-              [
-                ['App-running user-hours', d.user_hours],
-                ['Ticker-shown user-hours', d.ticker_user_hours],
-                ['Ticker screen-hours', d.screen_hours],
-              ] as const
-            ).map(([title, metric]) => (
-              <Card key={title} title={title} label={windowLabel}>
-                <MetricValue metric={metric} format={formatHours}>
-                  <p className="mt-1 text-sm text-base-content/60">
-                    <DeltaBadge
-                      comparison={metric.comparison}
-                      format={(v) => `${v > 0 ? '+' : ''}${formatHours(v)}`}
-                    />
-                  </p>
-                </MetricValue>
-              </Card>
-            ))}
-          </div>
-          <div className="grid items-start gap-4 lg:grid-cols-3">
-            <Card
-              title="Peak concurrency"
-              label={windowLabel}
-              note={
-                d.peak.available
-                  ? `${d.peak.resolution_seconds}-second samples of the live index; a spike shorter than that is not seen.`
-                  : undefined
-              }
-            >
-              {d.peak.available ? (
-                <>
-                  <Big>{num(d.peak.users)}</Big>
-                  <p className="mt-1 text-sm text-base-content/60">
-                    users at once
-                    {d.peak.at
-                      ? ` · ${new Date(d.peak.at).toLocaleString()}`
-                      : ''}
-                  </p>
-                  <div className="mt-3 border-t border-base-300/60 pt-2">
-                    <Row
-                      label="With ticker(s)"
-                      value={num(d.peak.ticker_users)}
-                    />
-                    <Row label="Screens" value={num(d.peak.screens)} />
-                  </div>
-                </>
-              ) : (
-                <Unmeasurable note={d.peak.note} />
-              )}
-            </Card>
-            <Card
-              title="Screens per session"
-              label={windowLabel}
-              note="Sessions are computers. Two ticker windows on one computer are two screens."
-            >
-              {(d.screens_per_user ?? []).length === 0 ? (
-                <p className="text-sm text-base-content/65">
-                  No sessions in this window.
-                </p>
-              ) : (
-                (d.screens_per_user ?? []).map((b) => (
-                  <Row
-                    key={b.screens}
-                    label={`${b.screens} screen${b.screens === '1' ? '' : 's'}`}
-                    value={`${num(b.sessions)} sessions · ${num(b.users)} users`}
-                  />
-                ))
-              )}
-            </Card>
-            <Card title="Users per bucket" label={windowLabel}>
-              <Sparkline
-                buckets={d.users_curve}
-                step={d.curve_step}
-                label="Distinct app-running users per bucket"
-              />
-            </Card>
-          </div>
+        <Section id="presence" title="Time spent with Scrollr">
+          <FactList
+            facts={[
+              {
+                label: 'App open - total hours',
+                value: factOf(d.user_hours, formatHours),
+              },
+              {
+                label: 'Ticker visible - total hours',
+                value: factOf(d.ticker_user_hours, formatHours),
+              },
+              {
+                label: 'Ticker screen-hours - includes multiple screens',
+                value: factOf(d.screen_hours, formatHours),
+              },
+              {
+                label: 'Peak simultaneous users',
+                value: d.peak.available ? num(d.peak.users) : null,
+              },
+            ]}
+          />
           <DefinitionDisclosure>
             <p>{d.definition}</p>
+            <p>
+              {d.peak.available
+                ? `Peak uses ${d.peak.resolution_seconds}-second samples.`
+                : d.peak.note}
+            </p>
+            {d.filters.note && <p>{d.filters.note}</p>}
           </DefinitionDisclosure>
         </Section>
 
-        <Section
-          id="retention"
-          title="Presence retention"
-          lede={d.retention.definition}
-        >
+        <Section id="retention" title="Do people return?">
           <div className="grid gap-4 sm:grid-cols-3">
             <RetentionCard metric={d.retention.d1} />
             <RetentionCard metric={d.retention.d7} />
             <RetentionCard metric={d.retention.d30} />
           </div>
+          <DefinitionDisclosure>
+            <p>{d.retention.definition}</p>
+          </DefinitionDisclosure>
         </Section>
 
         <Section
@@ -1845,22 +1759,24 @@ export function DesktopContent({
           title="Widget types"
           lede={`Share is of ${num(d.widgets.measured_ticker_users)} measured ticker users in the window.`}
         >
+          <FactList
+            facts={[
+              {
+                label: `Widgets added ${periodPhrase(period)}`,
+                value: widgetChanges(d.widgets, 'added'),
+              },
+              {
+                label: `Widgets removed ${periodPhrase(period)}`,
+                value: widgetChanges(d.widgets, 'removed'),
+              },
+            ]}
+          />
           <WidgetTable widgets={d.widgets} />
           <DefinitionDisclosure>
             <p>{d.widgets.definition}</p>
             <p>{d.widgets.repeat_note}</p>
             <p>{d.widgets.changes_note}</p>
           </DefinitionDisclosure>
-        </Section>
-
-        <Section id="legacy" title="Legacy measurement" lede={d.legacy_note}>
-          {d.legacy ? (
-            <LegacyBlock legacy={d.legacy} />
-          ) : (
-            <p className="text-sm text-base-content/65">
-              The legacy series is not available for this window.
-            </p>
-          )}
         </Section>
       </MoreDetail>
     </Question>
@@ -2040,70 +1956,6 @@ function WidgetTableRow({
   )
 }
 
-/** The old daily facts, drawn as buckets so the same chart code serves. */
-function dailyBuckets(points: Array<DailyProductCount>) {
-  return points.map((p) => ({ start: p.day, end: p.day, value: p.count }))
-}
-
-function LegacyBlock({
-  legacy,
-}: {
-  legacy: NonNullable<DesktopUsage['legacy']>
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="rounded-xl bg-primary/5 p-4 text-sm ring-1 ring-primary/20">
-        <p>{legacy.population_note}</p>
-        <p className="mt-1 text-xs text-base-content/60">
-          {legacy.collection_started_at
-            ? `Collection began ${new Date(legacy.collection_started_at).toLocaleDateString()}. No history is backfilled.`
-            : 'No participating accounts yet.'}
-        </p>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card title="Participating accounts">
-          <Big>{num(legacy.enrolled_accounts)}</Big>
-        </Card>
-        <Card title="Measured daily active">
-          <Big>{num(legacy.activity.dau)}</Big>
-        </Card>
-        <Card title="Measured 7-day active">
-          <Big>{num(legacy.activity.wau)}</Big>
-        </Card>
-        <Card title="Measured 30-day active">
-          <Big>{num(legacy.activity.mau)}</Big>
-        </Card>
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Measured active accounts by day">
-          <Sparkline
-            buckets={dailyBuckets(legacy.activity.curve)}
-            step="24h0m0s"
-            label="Measured active accounts by day"
-          />
-        </Card>
-        <Card
-          title="First observed ticker use"
-          note={legacy.activation.definition}
-        >
-          <Sparkline
-            buckets={dailyBuckets(legacy.activation.curve)}
-            step="24h0m0s"
-            label="First observed qualifying use by day"
-          />
-        </Card>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <RetentionCard metric={legacy.retention.d1} />
-        <RetentionCard metric={legacy.retention.d7} />
-        <RetentionCard metric={legacy.retention.d30} />
-      </div>
-    </div>
-  )
-}
-
-// ── Revenue ───────────────────────────────────────────────────────
-
 export interface RevenueContentProps {
   period: Period
   verdict: Verdict
@@ -2221,7 +2073,7 @@ export function RevenueContent({
       facts={facts}
       note={REVENUE_NOTE}
     >
-      <MoreDetail>
+      <MoreDetail title="Revenue details">
         <Stamp at={r.generated_at} />
         <p className="text-sm text-base-content/65">{r.account_note}</p>
         <Section
@@ -2606,7 +2458,7 @@ export function SupportContent({
       facts={facts}
       note={[s.paying_note, SUPPORT_NOTE].filter(Boolean).join(' ')}
     >
-      <MoreDetail>
+      <MoreDetail title="Support performance">
         <div className="flex flex-wrap items-center gap-3">
           <Stamp at={s.generated_at} />
           <Link to="/admin/support" className={LINK}>

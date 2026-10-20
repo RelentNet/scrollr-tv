@@ -48,6 +48,7 @@ const mocks = vi.hoisted(() => ({
   setAutoSendPaused: vi.fn(),
   unsubscribe: vi.fn(),
   holdDraft: vi.fn(),
+  skipDraft: vi.fn(),
   onConnection: null as null | ((connected: boolean) => void),
   onEvent: null as null | ((e: { ticket_number?: string }) => void),
 }))
@@ -62,6 +63,7 @@ vi.mock('@/api/admin', async () => {
       supportCase: mocks.supportCase,
       setAutoSendPaused: mocks.setAutoSendPaused,
       holdDraft: mocks.holdDraft,
+      skipDraft: mocks.skipDraft,
     },
     // Report the stream as live, the way a connected console does.
     subscribeToSupportEvents: (
@@ -499,10 +501,71 @@ describe('the case', () => {
       'Hold',
       'File as bug',
       'Link an issue',
-      'Skip',
+      'Dismiss',
     ]) {
       expect(labels, `${verb} is missing`).toContain(verb)
     }
+  })
+
+  it('confirms dismissing the selected pending reply without sending', async () => {
+    const host = await render(1440)
+    await open(host, 'Morgan Ellis')
+    const findButton = (label: string) =>
+      [...host.querySelectorAll<HTMLButtonElement>('button')].find(
+        (button) => button.textContent.trim() === label,
+      )!
+    await act(() => findButton('Dismiss').click())
+    expect(mocks.skipDraft).not.toHaveBeenCalled()
+    expect(host.textContent).toContain('without emailing anyone')
+    const detail = cases['752473']
+    mocks.skipDraft.mockResolvedValue({
+      ...detail,
+      draft: { ...detail.draft!, status: 'skipped' },
+    })
+    await act(() => findButton('Dismiss without replying').click())
+    expect(mocks.skipDraft).toHaveBeenCalledWith(mocks.token, detail.draft!.id)
+    expect(host.querySelector('#reply-body')).toBeNull()
+  })
+
+  it('folds diagnostics and internal activity while keeping the customer message readable', async () => {
+    const detail = cases['752473']
+    mocks.supportCase.mockResolvedValue({
+      ...detail,
+      messages: [
+        {
+          kind: 'user',
+          created_at: '2026-10-20T10:00:00Z',
+          body: 'My ticker stopped.\nSystem Diagnostics{"os":"windows"}\nThanks.',
+        },
+        {
+          kind: 'ai_draft',
+          created_at: '2026-10-20T10:01:00Z',
+          body: 'Unsent proposal',
+        },
+        {
+          kind: 'sent',
+          created_at: '2026-10-20T10:02:00Z',
+          body: 'Delivered reply',
+        },
+      ],
+    })
+    const host = await render(1440)
+    await open(host, 'Morgan Ellis')
+    const attachment = [...host.querySelectorAll('details')].find((node) =>
+      node.querySelector('summary')?.textContent.includes('System diagnostics'),
+    )!
+    expect(attachment.open).toBe(false)
+    expect(attachment.textContent).toContain('"os":"windows"')
+    const message = attachment.closest('article')!
+    expect(message.querySelector('p')?.textContent).toBe(
+      'My ticker stopped.\n\nThanks.',
+    )
+    const activity = [...host.querySelectorAll('details')].find((node) =>
+      node.querySelector('summary')?.textContent.includes('Bot activity'),
+    )!
+    expect(activity.open).toBe(false)
+    expect(activity.textContent).toContain('Unsent proposal')
+    expect(activity.textContent).not.toContain('Delivered reply')
   })
 
   it('starts the three disclosures closed, and opens one on a click', async () => {

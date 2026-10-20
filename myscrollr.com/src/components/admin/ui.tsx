@@ -53,7 +53,15 @@ export interface Report<T> {
 export function useReport<T>(
   load: (signal: AbortSignal) => Promise<T>,
   population?: string,
+  cacheTime = 0,
 ) {
+  // Page-local only: never survives staff sign-out, route unmount or a new user.
+  const cache = useRef(new Map<string | undefined, { data: T; at: number }>())
+  const cached = cache.current.get(population)
+  const cachedData =
+    cacheTime > 0 && cached && Date.now() - cached.at < cacheTime
+      ? cached.data
+      : null
   const [attempt, setAttempt] = useState(0)
   const [state, setState] = useState<Report<T> & { population?: string }>({
     population,
@@ -67,12 +75,18 @@ export function useReport<T>(
   useEffect(() => {
     const controller = new AbortController()
     request.current = controller
+    const entry = cache.current.get(population)
+    const previous =
+      cacheTime > 0 && entry && Date.now() - entry.at < cacheTime
+        ? entry.data
+        : null
     setState((current) => ({
       population,
-      data: current.population === population ? current.data : null,
+      data: current.population === population ? current.data : previous,
       error: null,
       loading: true,
-      refreshing: current.population === population && current.data !== null,
+      refreshing:
+        (current.population === population ? current.data : previous) !== null,
       slow: false,
     }))
     const slowTimer = window.setTimeout(() => {
@@ -84,6 +98,12 @@ export function useReport<T>(
       (data) => {
         window.clearTimeout(slowTimer)
         if (!controller.signal.aborted) {
+          if (cacheTime > 0) {
+            cache.current.delete(population)
+            cache.current.set(population, { data, at: Date.now() })
+            if (cache.current.size > 12)
+              cache.current.delete(cache.current.keys().next().value)
+          }
           setState({
             population,
             data,
@@ -97,6 +117,7 @@ export function useReport<T>(
       (error: unknown) => {
         window.clearTimeout(slowTimer)
         if (!controller.signal.aborted) {
+          cache.current.delete(population)
           setState({
             population,
             data: null,
@@ -115,16 +136,16 @@ export function useReport<T>(
       window.clearTimeout(slowTimer)
       controller.abort()
     }
-  }, [attempt, load, population])
+  }, [attempt, load, population, cacheTime])
 
   return {
     ...(state.population === population
       ? state
       : {
-          data: null,
+          data: cachedData,
           error: null,
           loading: true,
-          refreshing: false,
+          refreshing: cachedData !== null,
           slow: false,
         }),
     retry: () => setAttempt((value) => value + 1),
@@ -687,7 +708,7 @@ export function RefreshButton({
       ) : (
         <RefreshCw size={14} aria-hidden />
       )}
-      {label}
+      <span className="refresh-label">{label}</span>
     </button>
   )
 }

@@ -100,20 +100,30 @@ export default defineConfig(({ mode }) => ({
     envDir: resolve(projectRoot, "src/embed"),
   }),
 
+  // The scrollr-tv overlay (docs/SCROLLR_TV.md): `npm run build:overlay`
+  // builds overlay.html alone into dist-overlay/, served by the scrollr-tv
+  // server at /overlay/. Reads src/overlay/.env.overlay, not desktop/.env.
+  ...(mode === "overlay" && {
+    base: "/overlay/",
+    envDir: resolve(projectRoot, "src/overlay"),
+  }),
+
   // Multi-page build: ticker (index.html) + app window (app.html) +
   // the Identify tile (identify.html, no JS of its own)
   build: {
-    outDir: mode === "embed" ? "dist-embed" : "dist",
+    outDir: mode === "embed" ? "dist-embed" : mode === "overlay" ? "dist-overlay" : "dist",
     emptyOutDir: true,
     target: "esnext",
     // Generate source maps but don't expose them via comment. The Sentry
     // plugin uploads them and deletes locally when SENTRY_AUTH_TOKEN is set.
-    sourcemap: mode === "embed" ? false : "hidden",
+    sourcemap: mode === "embed" || mode === "overlay" ? false : "hidden",
     rollupOptions: {
       input:
         mode === "embed"
           ? { embed: resolve(projectRoot, "embed.html") }
-          : {
+          : mode === "overlay"
+            ? { overlay: resolve(projectRoot, "overlay.html") }
+            : {
               main: resolve(projectRoot, "index.html"),
               app: resolve(projectRoot, "app.html"),
               identify: resolve(projectRoot, "identify.html"),

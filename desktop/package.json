@@ -17,6 +17,7 @@
     "dev": "vite --port 5174",
     "web": "vite --port 5190 --strictPort --open /web.html",
     "build": "vite build && tsc --noEmit",
+    "build:overlay": "vite build --mode overlay",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:dev:mcp": "tauri dev --config src-tauri/tauri.mcp.conf.json -- --features dev-mcp-bridge",

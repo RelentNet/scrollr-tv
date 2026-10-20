@@ -96,3 +96,8 @@ test-results/
 
 # SCROLLR-302 lag measurement output (scripts/measure/live-lag.mjs)
 results/
+
+# scrollr-tv (docs/SCROLLR_TV.md): overlay build and the packaged server
+desktop/dist-overlay
+server/build
+server/dist

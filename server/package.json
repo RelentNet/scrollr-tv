@@ -1,0 +1,19 @@
+{
+  "name": "scrollr-tv-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "scrollr-tv: local server that signs in to Scrollr once and serves the broadcast overlay to OBS, vMix and a Raspberry Pi.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "dev": "node --watch src/index.mjs",
+    "build:overlay": "npm --prefix ../desktop run build:overlay",
+    "build:win": "node scripts/build-win.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "postject": "^1.0.0-alpha.6"
+  }
+}

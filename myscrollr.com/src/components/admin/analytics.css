@@ -1111,16 +1111,28 @@ html:has(.analytics-drawer[open]) {
 }
 .analytics-command-bar .analytics-nav-controls {
   display: flex;
+  align-items: center;
   flex-wrap: nowrap;
   justify-content: flex-end;
   gap: 8px;
   margin-left: auto;
   min-width: 0;
   width: auto;
-  overflow-x: auto;
+  overflow: visible;
   min-height: 42px;
 }
 .analytics-nav-controls > * {
+  flex-shrink: 0;
+}
+.analytics-command-bar .analytics-control-scroll {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-shrink: 1;
+  overflow-x: auto;
+}
+.analytics-control-scroll > * {
   flex-shrink: 0;
 }
 .analytics-population-controls[hidden] {
@@ -1160,6 +1172,7 @@ html:has(.analytics-drawer[open]) {
 }
 .analytics-command-bar .analytics-nav-controls > button {
   width: 36px;
+  height: 36px;
   min-height: 34px;
   padding: 8px;
 }
@@ -1242,5 +1255,12 @@ html:has(.analytics-drawer[open]) {
   }
   .analytics-overview {
     min-height: 250px;
+  }
+}
+@media (max-width: 520px) {
+  .analytics-command-bar .analytics-nav-links button {
+    font-size: 12px;
+    padding: 8px 5px;
+    gap: 0;
   }
 }

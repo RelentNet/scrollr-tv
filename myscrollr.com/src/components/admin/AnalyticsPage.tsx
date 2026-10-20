@@ -569,8 +569,10 @@ export function SectionNav({
         })}
       </div>
       <div className="analytics-nav-controls">
-        {populationControls}
-        <PeriodSelector value={period} onChange={onPeriod} />
+        <div className="analytics-control-scroll">
+          <PeriodSelector value={period} onChange={onPeriod} />
+          {populationControls}
+        </div>
         {onRefresh && (
           <RefreshButton
             onClick={onRefresh}

@@ -325,17 +325,8 @@ function AnalyticsWorkspace() {
                 period={period}
                 verdict={sectionVerdicts.growth}
                 audience={audience}
-                website={
-                  filtered
-                    ? {
-                        ...website,
-                        data: null,
-                        loading: false,
-                        error:
-                          'Website visits are anonymous and cannot be linked to this account population. Clear filters to inspect website acquisition.',
-                      }
-                    : website
-                }
+                website={website}
+                populationFiltered={filtered}
                 desktop={desktop}
                 investigations={
                   <>
@@ -1007,6 +998,7 @@ export interface GrowthContentProps {
   desktop: Report<DesktopUsage>
   investigations?: ReactNode
   diagnostics?: ReactNode
+  populationFiltered?: boolean
 }
 
 const GROWTH_QUESTION = 'Are new people showing up, and do they stick?'
@@ -1099,7 +1091,9 @@ export function GrowthContent(props: GrowthContentProps) {
             },
             {
               label: 'Website',
-              content: (
+              content: props.populationFiltered ? (
+                <Unmeasurable note="Website visits are anonymous and cannot be linked to this account population. Clear filters to inspect website acquisition." />
+              ) : (
                 <Section id="website" title="Website acquisition">
                   <FactList
                     facts={[

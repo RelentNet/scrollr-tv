@@ -7,6 +7,7 @@
 //   /api/*            the Scrollr API with this server's bearer token added
 //   /overlay/         the built ticker overlay, for OBS, vMix and the Pi
 import http from "node:http";
+import { spawn } from "node:child_process";
 import { HOST, PORT, API_BASE } from "./config.mjs";
 import { authState, beginLogin, escapeHtml, logout } from "./auth.mjs";
 import { proxy } from "./proxy.mjs";
@@ -73,8 +74,26 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+/** Open a URL in the user's default browser; failures are only logged. */
+function openBrowser(url) {
+  const [cmd, args] =
+    process.platform === "win32"
+      ? ["cmd", ["/c", "start", "", url]]
+      : process.platform === "darwin"
+        ? ["open", [url]]
+        : ["xdg-open", [url]];
+  try {
+    spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true }).on("error", () => {}).unref();
+  } catch {
+    // headless (the Pi): the log line is the way in
+  }
+}
+
 server.listen(PORT, HOST, async () => {
   const s = await authState();
   console.log(`scrollr-tv  ${ORIGIN}/   (${s.signedIn ? `signed in as ${s.userSub}` : "not signed in — open the URL to sign in"})`);
   console.log(`overlay     ${ORIGIN}/overlay/?bg=transparent`);
+  // Signed out: put the status page in front of the user so the first run
+  // is "double-click, sign in". `--no-open` for services and the Pi.
+  if (!s.signedIn && !process.argv.includes("--no-open") && !process.env.SCROLLR_TV_NO_OPEN) openBrowser(`${ORIGIN}/`);
 });

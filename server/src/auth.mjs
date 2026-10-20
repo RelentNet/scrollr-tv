@@ -100,7 +100,7 @@ export async function beginLogin(returnTo) {
     server.listen(Number(url.port), url.hostname, resolve);
   });
 
-  const timer = setTimeout(() => void cancelLogin(), 5 * 60_000);
+  const timer = setTimeout(() => void cancelLogin(), 15 * 60_000);
   pending = { server, timer };
 
   const params = new URLSearchParams({

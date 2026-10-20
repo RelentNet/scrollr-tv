@@ -13,6 +13,7 @@ import { authState, beginLogin, escapeHtml, logout } from "./auth.mjs";
 import { proxy } from "./proxy.mjs";
 import { overlayLocation, serveOverlay } from "./static.mjs";
 import { tokenFile } from "./tokens.mjs";
+import { FILES_DIR, filesState, startFilesWatcher } from "./files.mjs";
 
 const ORIGIN = `http://localhost:${PORT}`;
 
@@ -23,6 +24,7 @@ function json(res, status, body) {
 
 async function statusPage(res) {
   const s = await authState();
+  const files = await filesState();
   const who = s.signedIn ? `Signed in as <code>${escapeHtml(s.userSub ?? "?")}</code>` : "Not signed in";
   const action = s.signedIn
     ? `<form method="post" action="/auth/logout"><button>Sign out</button></form>`
@@ -43,6 +45,7 @@ async function statusPage(res) {
 <table>
 <tr><td>Overlay</td><td><a href="/overlay/">${ORIGIN}/overlay/</a><br><span class="muted">The bar is exactly <b>64 px</b> tall. OBS: Browser Source <b>1920×64</b> (1280×64 for a 720p canvas), placed at the top of the canvas. vMix: Web Browser input, same size. Nothing else paints, so no transparency is needed; a full-canvas source works too (<code>?bg=transparent</code> is the default). Add <code>?theme=scrollr-light</code>, <code>?mode=continuous</code>, <code>?utils=clock,weather</code>, <code>?bg=solid</code>.</span></td></tr>
 <tr><td>API</td><td><code>${ORIGIN}/api/…</code> → <code>${escapeHtml(API_BASE)}</code></td></tr>
+<tr><td>Files</td><td><code>${escapeHtml(FILES_DIR)}</code><br><span class="muted">Schedules and notes for the bar: each <code>.md</code>, <code>.txt</code> or <code>.json</code> file here is a feed; edit it and the bar follows within seconds. ${files.feeds.length} file(s), ${files.feeds.reduce((n, f) => n + f.items.length, 0)} item(s) now. <a href="/files">View as JSON</a>.</span></td></tr>
 <tr><td>Tokens</td><td><code>${escapeHtml(tokenFile())}</code></td></tr>
 <tr><td>Overlay files</td><td><code>${escapeHtml(overlayLocation())}</code></td></tr>
 </table>
@@ -54,6 +57,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (u.pathname === "/") return await statusPage(res);
     if (u.pathname === "/auth/state") return json(res, 200, await authState());
+    if (u.pathname === "/files") return json(res, 200, await filesState());
     if (u.pathname === "/auth/login") {
       const url = await beginLogin(`${ORIGIN}/`);
       res.writeHead(302, { Location: url }).end();
@@ -91,6 +95,8 @@ function openBrowser(url) {
 
 server.listen(PORT, HOST, async () => {
   const s = await authState();
+  await startFilesWatcher();
+  console.log(`files       ${FILES_DIR}`);
   console.log(`scrollr-tv  ${ORIGIN}/   (${s.signedIn ? `signed in as ${s.userSub}` : "not signed in — open the URL to sign in"})`);
   console.log(`overlay     ${ORIGIN}/overlay/?bg=transparent`);
   // Signed out: put the status page in front of the user so the first run

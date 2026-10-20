@@ -85,60 +85,58 @@ rendered as a transparent browser layer; the overlay page does not change.
 
 The server runs on the Pi too (Node on arm64), so the Pi is self-contained.
 
-## Local file widget
+## Local file widget (built: schedules and notes for the LED wall)
 
-A **utility widget** (`api/CHANNELS.md`, `docs/VISION.md`): no `source`, no
-server row, lives in preferences. That matters because the catalog is
-server-owned and `GET /catalog` will never list it. The client already handles
-that on purpose (`desktop/src/marketplace.ts`: `isUtilityWidget` falls back to
-the local registry and `canonicalOrder` appends local ids), so a new folder under
-`desktop/src/widgets/` is enough to make it appear in the Library and feed.
+**The use case:** at a convention, the LED wall shows the day's schedule and
+house notes. Edit a text file, the bar follows within seconds.
 
-`desktop/src/widgets/registry.ts` globs `./*/FeedTab.tsx` and registers every
-export named `<id>Widget` that is a `WidgetManifest`. The `github` widget
-(`desktop/src/widgets/github/`) is the closest model: local-only, own config in
-`prefs.widgets.github`, polls on its own, one chip per item on the ticker.
+**How it works.** The server watches a folder (`server/src/files.mjs`:
+`%APPDATA%\scrollr-tv\files`, or `--files <dir>` / `SCROLLR_TV_FILES`; two
+sample files are written on first run) and serves it as `GET /files`. The
+overlay (`src/overlay/boot.ts`, "The files widget") folds those files into the
+account's dashboard as feeds of the **Custom RSS** widget (`rss_custom`, added
+client-side when the account has none) with each line as a headline row. So
+the bar shows them with the same headline chips and page cells it uses for
+news, and no shared ticker code changed. A file change is pushed onto the
+app's own event bus as CDC records, exactly as a real feed update arrives.
 
-Widget id `localfile`. Each tracked file becomes an item:
+**File formats, one feed per file.** The feed's name is the chip's tab
+(SCHEDULE, NOTES).
 
-- **Markdown / text**: first heading is the title; top-level bullets or
-  paragraphs are lines. Notes.
-- **JSON** for structured things like a schedule:
-  ```json
-  { "title": "Today", "items": [
-      { "label": "Standup", "at": "2026-10-21T09:00", "note": "zoom" },
-      { "label": "Dentist", "at": "2026-10-21T14:30" } ] }
+- `name.md` / `name.txt`: the first `# Heading` is the feed name (else the
+  file name). Each `- ` bullet or non-empty line is an item. `Title — detail`,
+  `Title | detail` or `Title: detail` split into headline and detail line. A
+  leading `9:00 AM` / `14:30` keeps the day in order.
+  ```md
+  # Schedule
+  - 9:00 AM Doors open — Main hall
+  - 10:00 AM Opening panel — Stage A
   ```
-  Items with `at` sort by time; the ticker shows the next one. The same JSON
-  can also carry lower-third entries (`"lowerThirds": [{ "name", "title" }]`)
-  so one file drives both.
-- **ICS**: later, parsed into the JSON shape.
+- `name.json`: `{ "name": "...", "items": [ { "title", "detail"?, "at"?,
+  "link"? } ] }`.
 
-| Piece | File | Modeled on |
-|---|---|---|
-| Config (`files: [{path, label}]`, `pollSeconds`) | `widgets/localfile/config.ts` | `widgets/github/config.ts`, wired into `preferences.ts` the same way |
-| Reader `string → {title, items}` | `widgets/localfile/read.ts` | pure, Vitest |
-| Feed page | `widgets/localfile/FeedTab.tsx` exporting `localfileWidget` | `widgets/github/FeedTab.tsx` |
-| Ticker data | `hooks/useWidgetTickerData.ts` (add `localfile`) | the `github` branch there |
-| Ticker chip | reuse `components/chips/CappedChip.tsx` | GitHub's per-item chip |
-| Page cell | `components/pages/widgetPages.ts` + a cell in `components/pages/cells/` | `RepoCell.tsx`; read `docs/CHIP_SPEC.md` §12A first |
-| Chip colours | `components/chips/chipColors.ts` | literal map, Tailwind scans it |
-
-Add `"localfile"` to `WIDGET_ORDER` in `widgets/registry.ts`.
+**Why not a new widget kind.** A native utility widget (the earlier plan: a
+`localfile` folder under `desktop/src/widgets/`, modeled on `github/`) needs
+hooks in `useWidgetTickerData`, `widgetPages`, `PagedBar`, `chipColors` and the
+ticker's chip roster, all shared files that upstream changes often. Riding the
+news renderer keeps the fork's diff to `server/` and `src/overlay/`. The costs:
+items rotate through three chip slots like headlines, and the page cell's age
+column reads "now" (chips show no age: `published_at` is null on purpose). A
+dedicated schedule cell can come later without changing the file format.
 
 ## Order of work
 
-1. **Server, auth, proxy.** `server/` signs in, stores the token, proxies
-   `/api` and `/sse`. Verified by `curl localhost:7331/api/users/me`.
-2. **Overlay page.** `overlay.html` showing your account's real bar over a
-   transparent body; test in OBS as a Browser Source.
-3. **Lower third.** Component, WebSocket, control page with show/hide.
-4. **Local file widget.** `config.ts` + `read.ts` with tests, then FeedTab,
-   chip, page cell; files served by the server's watcher.
-5. **Pi.** Kiosk script, capture `<video>` layer, systemd units for server and
-   Chromium.
-6. **Upstream merges.** All new code is under `server/`, `src/overlay/` and
-   `widgets/localfile/`, with small hooks in the shared files named above.
+1. ~~**Server, auth, proxy.**~~ Done: `server/`, Windows exe.
+2. ~~**Overlay page.**~~ Done: `overlay.html`, 1920×64 browser source.
+3. ~~**Local file widget.**~~ Done, as above.
+4. **Lower third.** Component, WebSocket, control page with show/hide; can
+   read entries from the same files folder.
+5. **Weather and system monitor on the overlay.** Weather from a city in the
+   URL (Open-Meteo works from a browser); sysmon from the server's own OS
+   stats (on the Pi, the Pi's).
+6. **Pi.** [RelentNet/scrollr-tv#1](https://github.com/RelentNet/scrollr-tv/issues/1).
+7. **Upstream merges.** All new code is under `server/` and `src/overlay/`,
+   with one Vite mode and one npm script in `desktop/`.
 
 ## Running the desktop app itself (optional)
 

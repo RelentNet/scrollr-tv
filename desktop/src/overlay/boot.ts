@@ -87,6 +87,123 @@ function deliver(event: string, payload: unknown) {
   });
 }
 
+// ── The files widget: the server's folder, as a news widget ───────
+//
+// docs/SCROLLR_TV.md, "Local file widget". The server watches a folder of
+// schedules and notes (`GET /files`). Each file becomes a feed of the
+// account's Custom RSS widget (`rss_custom`, added here when the account
+// has none), and its lines become headline rows, so the bar shows them
+// with the same chips and page cells it uses for news and nothing in the
+// ticker had to learn a new kind. A change to a file arrives as CDC
+// records on the app's own event bus, as a real feed update would.
+
+interface FileItem { id: string; title: string; detail: string; link: string; at: string | null }
+interface FileFeed { file: string; name: string; url: string; items: FileItem[] }
+interface FilesState { version: string; feeds: FileFeed[] }
+type Row = Record<string, unknown>;
+
+const FILES_POLL_MS = 5_000;
+const FILES_RESTAMP_MS = 30 * 60_000;
+const FILE_WIDGET = "rss_custom";
+const FILE_ROW_BASE = -1_000_000;
+
+let files: FilesState = { version: "", feeds: [] };
+let fileStamp = new Date().toISOString();
+
+async function fetchFiles(): Promise<FilesState | null> {
+  try {
+    const res = await nativeFetch("/files", { cache: "no-store" });
+    return res.ok ? ((await res.json()) as FilesState) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A stable negative row id per item, so CDC updates hit the same row. */
+function rowId(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+  return FILE_ROW_BASE - (Math.abs(h) % 900_000);
+}
+
+/** The files as rss_items rows. `published_at` is null on purpose: the
+ *  chip's age cell then reads blank, and the item is current by the rail's
+ *  rules (an undated item counts as now). `created_at` is re-stamped on
+ *  every change and every half hour so the ticker's horizon never drops them. */
+function fileRows(f: FilesState): Row[] {
+  return f.feeds.flatMap((feed) =>
+    feed.items.map((it) => ({
+      id: rowId(`${feed.url}:${it.id}`),
+      feed_url: feed.url,
+      guid: it.id,
+      title: it.title,
+      link: it.link,
+      description: it.detail,
+      source_name: feed.name,
+      published_at: null,
+      created_at: fileStamp,
+      updated_at: fileStamp,
+    })),
+  );
+}
+
+/** The account's dashboard with the files folded in. */
+function mergeDashboard(d: Row, f: FilesState): Row {
+  if (!f.feeds.length) return d;
+  const widgets = [...((d.widgets as Row[] | undefined) ?? [])];
+  const feeds = f.feeds.map((x) => ({ name: x.name, url: x.url }));
+  const i = widgets.findIndex((w) => w.widget_type === FILE_WIDGET);
+  if (i >= 0) {
+    const cfg = (widgets[i].config as Row | undefined) ?? {};
+    const own = ((cfg.feeds as Array<{ url?: string }> | undefined) ?? []).filter((x) => !String(x.url).startsWith("scrollr-tv://"));
+    widgets[i] = { ...widgets[i], ticker_enabled: true, enabled: true, config: { ...cfg, feeds: [...own, ...feeds] } };
+  } else {
+    widgets.push({
+      id: FILE_ROW_BASE,
+      widget_type: FILE_WIDGET,
+      enabled: true,
+      ticker_enabled: true,
+      config: { feeds },
+      created_at: fileStamp,
+      updated_at: fileStamp,
+    });
+  }
+  const data = (d.data as Row | undefined) ?? {};
+  const rss = ((data.rss as Row[] | undefined) ?? []).filter((r) => !String(r.feed_url).startsWith("scrollr-tv://"));
+  return { ...d, widgets, data: { ...data, rss: [...rss, ...fileRows(f)] } };
+}
+
+/** Push a change as CDC: deletes for rows that went, upserts for the rest.
+ *  The app's CDC hook also refetches /dashboard shortly after, which comes
+ *  back through mergeDashboard, so the feed list (a new file) catches up too. */
+function pushFileChange(prev: FilesState, next: FilesState) {
+  const before = new Map(fileRows(prev).map((r) => [`${r.feed_url}:${r.guid}`, r]));
+  files = next;
+  fileStamp = new Date().toISOString();
+  const after = fileRows(next);
+  const records: Row[] = [];
+  const seen = new Set<string>();
+  for (const r of after) {
+    const k = `${r.feed_url}:${r.guid}`;
+    seen.add(k);
+    records.push({ action: before.has(k) ? "update" : "insert", record: r, changes: {}, metadata: { table_name: "rss_items" } });
+  }
+  for (const [k, r] of before) {
+    if (!seen.has(k)) records.push({ action: "delete", record: r, changes: {}, metadata: { table_name: "rss_items" } });
+  }
+  if (records.length) deliver("sse-event", { data: records });
+}
+
+function watchFiles() {
+  setInterval(async () => {
+    if (document.hidden) return;
+    const next = await fetchFiles();
+    if (!next) return;
+    if (next.version !== files.version) pushFileChange(files, next);
+    else if (Date.now() - Date.parse(fileStamp) > FILES_RESTAMP_MS && next.feeds.length) pushFileChange(files, next);
+  }, FILES_POLL_MS);
+}
+
 // ── HTTP: the app's plugin-http calls, sent to the server ─────────
 
 interface Req {
@@ -106,8 +223,16 @@ async function send(rid: number) {
     body: data ? new Uint8Array(data) : undefined,
     signal: r.abort.signal,
   });
-  r.reader = res.body?.getReader();
-  return { status: res.status, statusText: res.statusText, url, headers: [...res.headers], rid };
+  let resHeaders = [...res.headers];
+  if (res.ok && /\/dashboard(\?|$)/.test(url) && files.feeds.length) {
+    // The account's dashboard, with the files folded in (see above).
+    const merged = mergeDashboard((await res.json()) as Row, files);
+    r.reader = new Blob([JSON.stringify(merged)]).stream().getReader();
+    resHeaders = resHeaders.filter(([k]) => k.toLowerCase() !== "content-length");
+  } else {
+    r.reader = res.body?.getReader();
+  }
+  return { status: res.status, statusText: res.statusText, url, headers: resHeaders, rid };
 }
 
 async function readBody(rid: number) {
@@ -299,8 +424,9 @@ window.addEventListener("contextmenu", (e) => e.stopImmediatePropagation(), true
 
 // ── Boot ───────────────────────────────────────────────────────────
 
-void authState().then((s) => {
+void Promise.all([authState(), fetchFiles()]).then(([s, f]) => {
   const root = document.getElementById("root")!;
+  if (f) files = f;
   if (!s.signedIn) {
     document.documentElement.dataset.source = "signed-out";
     root.innerHTML =
@@ -331,5 +457,6 @@ void authState().then((s) => {
     done();
   });
   mo.observe(root, { childList: true });
+  watchFiles();
   void import("../main");
 });

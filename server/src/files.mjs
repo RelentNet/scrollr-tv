@@ -29,7 +29,14 @@ const argDir = (() => {
 })();
 export const FILES_DIR = path.resolve(argDir ?? process.env.SCROLLR_TV_FILES ?? path.join(DATA_DIR, "files"));
 
+const OVERLAY_FILE = "_overlay.json";
+
 const SAMPLES = {
+  [OVERLAY_FILE]: `{
+  "title": "Notes",
+  "tagline": "powered by Scrollr"
+}
+`,
   "schedule.md": `# Schedule
 
 - 9:00 AM Doors open — Main hall
@@ -122,14 +129,32 @@ async function ensureDir() {
   const entries = await fsp.readdir(FILES_DIR);
   if (entries.length === 0) {
     for (const [f, body] of Object.entries(SAMPLES)) await fsp.writeFile(path.join(FILES_DIR, f), body, "utf8");
+  } else if (!entries.includes(OVERLAY_FILE)) {
+    await fsp.writeFile(path.join(FILES_DIR, OVERLAY_FILE), SAMPLES[OVERLAY_FILE], "utf8");
   }
 }
 
 async function load() {
   await ensureDir();
-  const names = (await fsp.readdir(FILES_DIR)).filter((f) => /\.(md|txt|json)$/i.test(f) && !f.startsWith(".")).sort();
+  const all = await fsp.readdir(FILES_DIR);
+  const names = all.filter((f) => /\.(md|txt|json)$/i.test(f) && !/^[._]/.test(f)).sort();
   const feeds = [];
   const hash = crypto.createHash("sha1");
+  // `_overlay.json`: the page tab's title and the line under it. Not a feed.
+  let overlay = { title: "", tagline: "powered by Scrollr" };
+  if (all.includes(OVERLAY_FILE)) {
+    try {
+      const text = await fsp.readFile(path.join(FILES_DIR, OVERLAY_FILE), "utf8");
+      hash.update(OVERLAY_FILE).update("\0").update(text).update("\0");
+      const j = JSON.parse(text);
+      overlay = {
+        title: typeof j.title === "string" ? j.title : "",
+        tagline: typeof j.tagline === "string" ? j.tagline : overlay.tagline,
+      };
+    } catch {
+      // unreadable: the defaults stand
+    }
+  }
   for (const file of names) {
     let text;
     try {
@@ -159,7 +184,7 @@ async function load() {
       })),
     });
   }
-  cache = { version: hash.digest("hex").slice(0, 12), feeds };
+  cache = { version: hash.digest("hex").slice(0, 12), overlay, feeds };
   return cache;
 }
 

@@ -14,12 +14,19 @@
  *   ?mode=pages|continuous         default pages
  *   ?keypad=0|1                    the hover keypad (default 0: nothing
  *                                  hovers a broadcast)
+ *   ?qr=https://myscrollr.com      a QR code at the right end of the bar, where
+ *                                  the clock would be (default: myscrollr.com;
+ *                                  ?qr=0 for none)
  *   ?utils=clock,weather           local utility widgets on the edge
- *                                  (default clock)
+ *                                  (default: none with the QR code, else clock)
+ *   ?title=Anime%20Mundo           the files widget's page tab, and the
+ *   ?tagline=powered%20by%20Scrollr   line under it (defaults: _overlay.json
+ *                                  in the files folder)
  *
  * The data widgets are the account's own (`/dashboard` rows); there is
  * nothing to pick here. <html data-ready> once the bar has drawn.
  */
+import qrcode from "qrcode-generator";
 import { API_BASE, REDIRECT_URI } from "../config";
 
 type Args = Record<string, any>;
@@ -50,12 +57,16 @@ async function authState(): Promise<AuthState> {
 // ── Store (in memory; seeded from the URL, never saved) ───────────
 
 const theme = /^([a-z-]+)-(light|dark)$/.exec(params.get("theme") ?? "") ?? [null, "scrollr", "dark"];
+const QR_DEFAULT = "https://myscrollr.com";
+const qrParam = params.get("qr");
+const qrUrl = qrParam === "0" || qrParam === "" ? "" : (qrParam ?? QR_DEFAULT);
 const utils = [
-  "clock",
-  ...(params.get("utils") ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s && s !== "clock"),
+  ...new Set(
+    (params.get("utils") ?? (qrUrl ? "" : "clock"))
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  ),
 ];
 const store = new Map<string, unknown>([
   ["scrollr:store-migrated", true],
@@ -87,6 +98,41 @@ function deliver(event: string, payload: unknown) {
   });
 }
 
+// ── The QR code: the bar's right end, where the clock would be ────
+//
+// Drawn by this page, outside the app's tree: the app's bar is narrowed
+// by the box's width so pages and chips never run under it. Modules take
+// the theme's text colour on the bar's own surface, so it reads in light
+// and dark alike. 64 px is small for a code, but an LED wall is not.
+const QR_BOX = 72;
+
+function mountQr(url: string) {
+  const qr = qrcode(0, "M");
+  qr.addData(url);
+  qr.make();
+  const n = qr.getModuleCount();
+  const size = 56;
+  const cell = size / n;
+  let d = "";
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += `M${(c * cell).toFixed(2)} ${(r * cell).toFixed(2)}h${cell.toFixed(2)}v${cell.toFixed(2)}h-${cell.toFixed(2)}z`;
+  }
+  const box = document.createElement("a");
+  box.id = "qr";
+  box.href = url;
+  box.target = "_blank";
+  box.rel = "noopener";
+  box.title = url;
+  box.setAttribute(
+    "style",
+    `position:fixed;top:0;right:0;width:${QR_BOX}px;height:64px;display:flex;align-items:center;justify-content:center;` +
+      "background:var(--color-base-150);border-left:1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);box-sizing:border-box;",
+  );
+  box.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges" aria-label="${url}"><path fill="var(--color-fg)" d="${d}"/></svg>`;
+  document.body.appendChild(box);
+  document.getElementById("root")!.style.width = `calc(100% - ${QR_BOX}px)`;
+}
+
 // ── The files widget: the server's folder, as a news widget ───────
 //
 // docs/SCROLLR_TV.md, "Local file widget". The server watches a folder of
@@ -99,8 +145,50 @@ function deliver(event: string, payload: unknown) {
 
 interface FileItem { id: string; title: string; detail: string; link: string; at: string | null }
 interface FileFeed { file: string; name: string; url: string; items: FileItem[] }
-interface FilesState { version: string; feeds: FileFeed[] }
+interface FilesState { version: string; overlay?: { title: string; tagline: string }; feeds: FileFeed[] }
 type Row = Record<string, unknown>;
+
+// ── The page tab's title and tagline ──────────────────────────────
+//
+// In Pages mode the files widget's tab reads the first word of the first
+// feed's name ("MAIN"), as any news widget's does. `_overlay.json` in the
+// files folder (or ?title= / ?tagline=) names it instead, and puts a line
+// under it ("powered by Scrollr"). The label is the app's own markup, so
+// this watches the bar and rewrites that one tab whenever it is drawn.
+function applyTitle() {
+  const title = params.get("title") ?? files.overlay?.title ?? "";
+  const tagline = params.get("tagline") ?? files.overlay?.tagline ?? "";
+  for (const label of document.querySelectorAll<HTMLElement>(`[data-label="${FILE_WIDGET}"]`)) {
+    const name = label.querySelector<HTMLElement>("[data-name]");
+    if (name && title) {
+      if (name.textContent !== title.toUpperCase()) name.textContent = title.toUpperCase();
+      // The tab is narrow: a real title needs the whole row, so the item
+      // count beside it goes, and a long one steps down a size.
+      label.querySelector('[data-part="chip"]')?.remove();
+      name.style.fontSize = title.length > 9 ? "16px" : "";
+      name.style.letterSpacing = title.length > 9 ? "0.02em" : "";
+    }
+    let tag = label.querySelector<HTMLElement>("[data-tagline]");
+    if (!tagline) {
+      tag?.remove();
+      continue;
+    }
+    if (!tag) {
+      tag = document.createElement("span");
+      tag.dataset.tagline = "";
+      tag.className = "block min-w-0 truncate font-sans text-[10px] font-semibold leading-none tracking-[0.06em] -mt-1";
+      tag.style.color = "color-mix(in srgb, var(--accent-ink) 72%, transparent)";
+      name?.parentElement?.insertAdjacentElement("afterend", tag);
+    }
+    if (tag.textContent !== tagline) tag.textContent = tagline;
+  }
+}
+
+function watchTitle() {
+  const root = document.getElementById("root")!;
+  new MutationObserver(() => applyTitle()).observe(root, { childList: true, subtree: true });
+  applyTitle();
+}
 
 const FILES_POLL_MS = 5_000;
 const FILES_RESTAMP_MS = 30 * 60_000;
@@ -199,7 +287,10 @@ function watchFiles() {
     if (document.hidden) return;
     const next = await fetchFiles();
     if (!next) return;
-    if (next.version !== files.version) pushFileChange(files, next);
+    if (next.version !== files.version) {
+      pushFileChange(files, next);
+      applyTitle();
+    }
     else if (Date.now() - Date.parse(fileStamp) > FILES_RESTAMP_MS && next.feeds.length) pushFileChange(files, next);
   }, FILES_POLL_MS);
 }
@@ -457,6 +548,8 @@ void Promise.all([authState(), fetchFiles()]).then(([s, f]) => {
     done();
   });
   mo.observe(root, { childList: true });
+  if (qrUrl) mountQr(qrUrl);
   watchFiles();
+  watchTitle();
   void import("../main");
 });

@@ -115,6 +115,14 @@ app's own event bus as CDC records, exactly as a real feed update arrives.
 - `name.json`: `{ "name": "...", "items": [ { "title", "detail"?, "at"?,
   "link"? } ] }`.
 
+**Title, tagline and QR code.** `_overlay.json` in the files folder
+(`{ "title": "Anime Mundo", "tagline": "powered by Scrollr" }`) names the
+widget's page tab and puts a line under it; `?title=` / `?tagline=` override
+it per source. A QR code for myscrollr.com sits at the right end of the bar
+in place of the clock (`?qr=<url>` for another link, `?qr=0` for none, `?utils=clock`
+to have the clock back beside it); the bar narrows by the code's 72 px so
+nothing runs under it.
+
 **Why not a new widget kind.** A native utility widget (the earlier plan: a
 `localfile` folder under `desktop/src/widgets/`, modeled on `github/`) needs
 hooks in `useWidgetTickerData`, `widgetPages`, `PagedBar`, `chipColors` and the

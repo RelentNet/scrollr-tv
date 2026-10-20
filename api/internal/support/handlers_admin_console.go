@@ -268,7 +268,8 @@ func (q queueState) pendingReason() string {
 
 type AdminQueueRow struct {
 	ConsoleStatus string `json:"console_status"`
-	TicketNumber  string `json:"ticket_number"`
+
+	TicketNumber string `json:"ticket_number"`
 	Subject      string `json:"subject"`
 	UserEmail    string `json:"user_email,omitempty"`
 	Name         string `json:"name,omitempty"`

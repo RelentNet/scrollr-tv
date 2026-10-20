@@ -319,12 +319,16 @@ func badBody(c *fiber.Ctx) error {
 	})
 }
 
+// HandleAdminDismissCase moves a ticket to the console's resolved section.
 func HandleAdminDismissCase(c *fiber.Ctx) error {
 	return handleAdminCaseDismissal(c, true)
 }
+
+// HandleAdminRestoreCase returns a dismissed ticket for staff review.
 func HandleAdminRestoreCase(c *fiber.Ctx) error {
 	return handleAdminCaseDismissal(c, false)
 }
+
 func handleAdminCaseDismissal(c *fiber.Ctx, dismiss bool) error {
 	if platform.DBPool == nil {
 		return adminSupportError(c, "The support database is unavailable.")

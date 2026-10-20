@@ -130,7 +130,7 @@ const reasonLabel: Record<string, string> = {
   identifier: 'Identifier',
   password: 'Password',
   provider: 'Social provider',
-  unknown: 'Other safe category',
+  unknown: 'Unclassified errors',
   verification_code: 'Verification code',
 }
 
@@ -1273,12 +1273,21 @@ export function SignupDiagnostics({
           Troubleshooting data: registration events and safe error categories.
           Counts are events, not people or completed signups.
         </p>
-        <Selector
-          label="Application"
-          options={APPLICATIONS}
-          value={application}
-          onChange={onApplicationChange}
-        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Selector
+            label="Application"
+            options={APPLICATIONS}
+            value={application}
+            onChange={onApplicationChange}
+          />
+          {signup?.retry && (
+            <RefreshButton
+              label="Refresh diagnostics"
+              onClick={signup.retry}
+              loading={signup.loading}
+            />
+          )}
+        </div>
         {signup && (
           <Loaded report={signup} label="signup diagnostics">
             {(s) => <SignupBlock signup={s} />}
@@ -1436,7 +1445,7 @@ function SignupBlock({ signup }: { signup: SignupAnalytics }) {
     )
   }
   const eventTotal = Object.values(signup.stages).reduce(
-    (sum, stage) => sum + stage.events,
+    (sum, stage) => sum + (stage?.events ?? 0),
     0,
   )
   return (
@@ -1445,7 +1454,10 @@ function SignupBlock({ signup }: { signup: SignupAnalytics }) {
         <h3>
           {eventTotal === 0
             ? 'No registration events found'
-            : signup.error_reasons.length
+            : signup.error_reasons.length ||
+                Object.values(signup.stages).some(
+                  (stage) => (stage?.errors ?? 0) > 0,
+                )
               ? 'Registration errors need a look'
               : 'No registration errors found'}
         </h3>
@@ -1479,8 +1491,8 @@ function SignupBlock({ signup }: { signup: SignupAnalytics }) {
               <tbody>
                 {STAGES.filter(
                   (stage) =>
-                    signup.stages[stage.key].events > 0 ||
-                    signup.stages[stage.key].errors > 0,
+                    (signup.stages[stage.key]?.events ?? 0) > 0 ||
+                    (signup.stages[stage.key]?.errors ?? 0) > 0,
                 ).map((stage) => {
                   const metrics = signup.stages[stage.key] ?? {
                     events: 0,
@@ -1506,11 +1518,12 @@ function SignupBlock({ signup }: { signup: SignupAnalytics }) {
           </div>
         </details>
       )}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card
-          title="Safe error reasons"
-          note="Raw errors, emails, IP addresses, user agents, parameters, and tokens are discarded before this response is built."
-        >
+      <div className="space-y-4">
+        <Card title="Recorded errors">
+          <p className="mb-3 text-sm text-base-content/60">
+            Counts are error events, not affected people. Repeated attempts can
+            appear more than once.
+          </p>
           {signup.error_reasons.length === 0 ? (
             <p className="text-sm text-base-content/65">
               No recognized registration errors were observed.
@@ -1523,9 +1536,11 @@ function SignupBlock({ signup }: { signup: SignupAnalytics }) {
                   className="flex justify-between gap-4 py-2 text-sm"
                 >
                   <span>
-                    {reasonLabel[reason.reason] ?? 'Other safe category'}
+                    {reasonLabel[reason.reason] ?? 'Unclassified errors'}
                   </span>
-                  <strong className="tabular-nums">{num(reason.count)}</strong>
+                  <strong className="tabular-nums">
+                    {num(reason.count)} events
+                  </strong>
                 </li>
               ))}
             </ul>
@@ -1535,6 +1550,10 @@ function SignupBlock({ signup }: { signup: SignupAnalytics }) {
       <DefinitionDisclosure summary="Coverage and counting rules">
         <p>{signup.coverage.note}</p>
         <p>{signup.attempt_conversion.note}</p>
+        <p>
+          Unclassified errors have no recognized safe category. Sensitive error
+          details are excluded from this report.
+        </p>
         <p>{num(signup.coverage.unique_logs)} unique logs scanned.</p>
       </DefinitionDisclosure>
       <Stamp at={signup.generated_at} />

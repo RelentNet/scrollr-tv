@@ -16,7 +16,7 @@ export interface SignupAnalytics {
   window_days: AnalyticsWindow
   generated_at: string
   measurement: 'events'
-  stages: Record<string, SignupStageMetrics>
+  stages: Partial<Record<string, SignupStageMetrics>>
   error_reasons: Array<{ reason: string; count: number }>
   coverage: {
     status: 'partial' | 'unknown'

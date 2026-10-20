@@ -24,6 +24,29 @@
   border: 0;
   padding: 0;
 }
+.analytics-refresh-notice {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.analytics-refresh-notice button {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: color-mix(
+    in srgb,
+    var(--color-warning) 12%,
+    var(--color-base-100)
+  );
+  color: var(--color-base-content);
+  border: 1px solid
+    color-mix(in srgb, var(--color-warning) 40%, var(--analytics-line));
+  font-weight: 600;
+  cursor: pointer;
+}
+.analytics-refresh-notice button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
 .analytics-nav-controls > button {
   width: 106px;
   justify-content: center;

@@ -1,5 +1,13 @@
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react'
 import { SignupTrend } from './SignupTrend'
 import { AnalyticsTrend } from './AnalyticsTrend'
 import { ReportBoundary } from './ReportBoundary'
@@ -68,6 +76,7 @@ import {
   loadWebsite,
 } from '@/api/adminDashboard'
 import { useGetToken } from '@/hooks/useGetToken'
+import { planLabel } from '@/lib/supportConsole'
 import {
   ANALYTICS_VIEWS,
   formatDuration,
@@ -108,6 +117,12 @@ const APPLICATIONS = [
   { value: 'website', label: 'Website' },
   { value: 'desktop', label: 'Desktop app' },
 ] as const
+
+const RefreshStatusContext = createContext<{
+  view: AnalyticsView
+  message: string
+  retry: () => void
+} | null>(null)
 
 const STAGES = [
   { key: 'started', label: 'Registration started', path: 'Entry' },
@@ -170,6 +185,7 @@ function AnalyticsWorkspace() {
     ),
     populationKey,
     60_000,
+    true,
   )
   const website = useReport(
     useCallback(
@@ -180,6 +196,7 @@ function AnalyticsWorkspace() {
     ),
     period,
     60_000,
+    true,
   )
   const desktop = useReport(
     useCallback(
@@ -190,6 +207,7 @@ function AnalyticsWorkspace() {
     ),
     `${period}:${os ?? ''}:${version ?? ''}:${plan ?? ''}`,
     60_000,
+    true,
   )
   const [filterOptions, setFilterOptions] = useState<DesktopUsage | null>(null)
   useEffect(() => {
@@ -204,6 +222,7 @@ function AnalyticsWorkspace() {
     ),
     populationKey,
     60_000,
+    true,
   )
   const support = useReport(
     useCallback(
@@ -218,6 +237,7 @@ function AnalyticsWorkspace() {
     ),
     populationKey,
     60_000,
+    true,
   )
   const week1Return = useReport(
     useCallback(
@@ -228,6 +248,28 @@ function AnalyticsWorkspace() {
     ),
     `${os ?? ''}:${version ?? ''}:${plan ?? ''}`,
     60_000,
+    true,
+  )
+
+  const visibleReports =
+    view === 'growth'
+      ? [
+          { label: 'Accounts', report: audience },
+          ...(!filtered ? [{ label: 'Website', report: website }] : []),
+          { label: 'Return visits', report: week1Return },
+        ]
+      : [
+          {
+            label: {
+              desktop: 'Desktop usage',
+              revenue: 'Revenue',
+              support: 'Support',
+            }[view],
+            report: { desktop, revenue, support }[view],
+          },
+        ]
+  const retainedReports = visibleReports.filter(
+    ({ report }) => report.data && report.error,
   )
 
   const sectionVerdicts: Record<AnalyticsView, Verdict> = {
@@ -304,106 +346,119 @@ function AnalyticsWorkspace() {
             }}
           />
         </div>
-        <AnalyticsStage
-          transitionKey={`${view}:${period}:${os}:${version}:${plan}`}
+        <RefreshStatusContext.Provider
+          value={
+            retainedReports.length
+              ? {
+                  view,
+                  message: `Showing saved results. ${retainedReports.map(({ label }) => label).join(', ')} couldn't refresh.`,
+                  retry: () =>
+                    retainedReports.forEach(({ report }) => report.retry()),
+                }
+              : null
+          }
         >
-          <div
-            hidden={view !== 'growth'}
-            inert={view !== 'growth'}
-            aria-hidden={view !== 'growth'}
+          <AnalyticsStage
+            transitionKey={`${view}:${period}:${os}:${version}:${plan}`}
           >
-            <ReportBoundary
-              label="Growth"
-              resetKeys={[audience.data, website.data, desktop.data]}
-              onRetry={() => {
-                audience.retry()
-                website.retry()
-                desktop.retry()
-              }}
+            <div
+              hidden={view !== 'growth'}
+              inert={view !== 'growth'}
+              aria-hidden={view !== 'growth'}
             >
-              <GrowthContent
-                period={period}
-                verdict={sectionVerdicts.growth}
-                audience={audience}
-                website={website}
-                populationFiltered={filtered}
-                desktop={desktop}
-                investigations={
-                  <>
-                    <ReportBoundary
-                      label="Week-1 return"
-                      resetKeys={[week1Return.data]}
-                      onRetry={week1Return.retry}
-                    >
-                      <Week1ReturnContent report={week1Return} />
-                    </ReportBoundary>
-                  </>
-                }
-                diagnostics={
-                  <SignupDiagnosticsSection
-                    period={period}
-                    refresh={refresh}
-                    expanded
-                  />
-                }
-              />
-            </ReportBoundary>
-          </div>
-          <div
-            hidden={view !== 'desktop'}
-            inert={view !== 'desktop'}
-            aria-hidden={view !== 'desktop'}
-          >
-            <ReportBoundary
-              label="Desktop usage"
-              resetKeys={[desktop.data]}
-              onRetry={desktop.retry}
+              <ReportBoundary
+                label="Growth"
+                resetKeys={[audience.data, website.data, desktop.data]}
+                onRetry={() => {
+                  audience.retry()
+                  website.retry()
+                  desktop.retry()
+                }}
+              >
+                <GrowthContent
+                  period={period}
+                  verdict={sectionVerdicts.growth}
+                  audience={audience}
+                  website={website}
+                  populationFiltered={filtered}
+                  desktop={desktop}
+                  investigations={
+                    <>
+                      <ReportBoundary
+                        label="Week-1 return"
+                        resetKeys={[week1Return.data]}
+                        onRetry={week1Return.retry}
+                      >
+                        <Week1ReturnContent report={week1Return} />
+                      </ReportBoundary>
+                    </>
+                  }
+                  diagnostics={
+                    <SignupDiagnosticsSection
+                      period={period}
+                      refresh={refresh}
+                      expanded
+                    />
+                  }
+                />
+              </ReportBoundary>
+            </div>
+            <div
+              hidden={view !== 'desktop'}
+              inert={view !== 'desktop'}
+              aria-hidden={view !== 'desktop'}
             >
-              <DesktopContent
-                period={period}
-                verdict={sectionVerdicts.desktop}
-                desktop={desktop}
-                filters={{ os, version, plan }}
-                onFilterChange={(next) => setSearch(next)}
-                showFilters={false}
-              />
-            </ReportBoundary>
-          </div>
-          <div
-            hidden={view !== 'revenue'}
-            inert={view !== 'revenue'}
-            aria-hidden={view !== 'revenue'}
-          >
-            <ReportBoundary
-              label="Revenue"
-              resetKeys={[revenue.data]}
-              onRetry={revenue.retry}
+              <ReportBoundary
+                label="Desktop usage"
+                resetKeys={[desktop.data]}
+                onRetry={desktop.retry}
+              >
+                <DesktopContent
+                  period={period}
+                  verdict={sectionVerdicts.desktop}
+                  desktop={desktop}
+                  filters={{ os, version, plan }}
+                  onFilterChange={(next) => setSearch(next)}
+                  showFilters={false}
+                />
+              </ReportBoundary>
+            </div>
+            <div
+              hidden={view !== 'revenue'}
+              inert={view !== 'revenue'}
+              aria-hidden={view !== 'revenue'}
             >
-              <RevenueContent
-                period={period}
-                verdict={sectionVerdicts.revenue}
-                revenue={revenue}
-              />
-            </ReportBoundary>
-          </div>
-          <div
-            hidden={view !== 'support'}
-            inert={view !== 'support'}
-            aria-hidden={view !== 'support'}
-          >
-            <ReportBoundary
-              label="Support"
-              resetKeys={[support.data]}
-              onRetry={support.retry}
+              <ReportBoundary
+                label="Revenue"
+                resetKeys={[revenue.data]}
+                onRetry={revenue.retry}
+              >
+                <RevenueContent
+                  period={period}
+                  verdict={sectionVerdicts.revenue}
+                  revenue={revenue}
+                />
+              </ReportBoundary>
+            </div>
+            <div
+              hidden={view !== 'support'}
+              inert={view !== 'support'}
+              aria-hidden={view !== 'support'}
             >
-              <SupportContent
-                period={period}
-                verdict={sectionVerdicts.support}
-                support={support}
-              />
-            </ReportBoundary>
-          </div>
-        </AnalyticsStage>
+              <ReportBoundary
+                label="Support"
+                resetKeys={[support.data]}
+                onRetry={support.retry}
+              >
+                <SupportContent
+                  period={period}
+                  verdict={sectionVerdicts.support}
+                  support={support}
+                />
+              </ReportBoundary>
+            </div>
+          </AnalyticsStage>
+        </RefreshStatusContext.Provider>
       </div>
     </PageFrame>
   )
@@ -808,6 +863,9 @@ function QuestionShell({
   info?: ReactNode
   children: ReactNode
 }) {
+  const refreshStatus = useContext(RefreshStatusContext)
+  const saved = refreshStatus?.view === id ? refreshStatus : null
+  const heading = useRef<HTMLHeadingElement>(null)
   return (
     <section
       id={id}
@@ -815,7 +873,12 @@ function QuestionShell({
       className="analytics-question"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-        <h2 id={`${id}-heading`} className="analytics-question-heading">
+        <h2
+          ref={heading}
+          tabIndex={-1}
+          id={`${id}-heading`}
+          className="analytics-question-heading"
+        >
           {title}
           <span>{question}</span>
         </h2>
@@ -823,7 +886,23 @@ function QuestionShell({
           {id === 'desktop' && (
             <span className="analytics-verdict-context">App hours</span>
           )}
-          <VerdictPill verdict={verdict} />
+          {saved ? (
+            <span role="status" className="analytics-refresh-notice">
+              <button
+                type="button"
+                onClick={() => {
+                  heading.current?.focus({ preventScroll: true })
+                  saved.retry()
+                }}
+                title={saved.message}
+                aria-label={`${saved.message} Retry`}
+              >
+                Saved results · Retry
+              </button>
+            </span>
+          ) : (
+            <VerdictPill verdict={verdict} />
+          )}
           {info}
         </div>
       </div>
@@ -1258,24 +1337,26 @@ function OpenedSignupDiagnostics({
   onApplicationChange: (application: AnalyticsApplication) => void
 }) {
   const getToken = useGetToken()
+  const days = signupDays(period)
   const signup = useReport(
     useCallback(
       (signal: AbortSignal) => {
-        void refresh
-        return loadSignupAnalytics(
-          getToken,
-          application,
-          signupDays(period),
-          signal,
-        )
+        return loadSignupAnalytics(getToken, application, days, signal)
       },
-      [application, getToken, period, refresh],
+      [application, getToken, days],
     ),
-    `${application}:${signupDays(period)}:${refresh}`,
+    `${application}:${days}`,
     5 * 60_000,
+    true,
   )
   const retryRef = useRef(signup.retry)
   retryRef.current = signup.retry
+  const lastRefresh = useRef(refresh)
+  useEffect(() => {
+    if (lastRefresh.current === refresh) return
+    lastRefresh.current = refresh
+    retryRef.current()
+  }, [refresh])
   const pollStarted = useRef(0)
   const [pollExpired, setPollExpired] = useState(false)
   useEffect(() => {
@@ -1724,6 +1805,12 @@ function FilterSelect({
 }) {
   const filterId = useId()
   const id = `desktop-filter-${name}-${filterId}`
+  const optionLabel = (key: string) =>
+    name === 'plan'
+      ? planLabel(key)
+      : name === 'os'
+        ? ({ windows: 'Windows', macos: 'macOS', linux: 'Linux' }[key] ?? key)
+        : key
   return (
     <label htmlFor={id} className={`analytics-filter analytics-filter-${name}`}>
       <span className="text-base-content/60">{label}</span>
@@ -1743,11 +1830,11 @@ function FilterSelect({
               : 'plans'}
         </option>
         {value && !options.some((option) => option.value === value) && (
-          <option value={value}>{value}</option>
+          <option value={value}>{optionLabel(value)}</option>
         )}
         {options.map((option) => (
           <option key={option.value} value={option.value}>
-            {option.value} ({num(option.count)})
+            {optionLabel(option.value)} ({num(option.count)})
           </option>
         ))}
       </select>

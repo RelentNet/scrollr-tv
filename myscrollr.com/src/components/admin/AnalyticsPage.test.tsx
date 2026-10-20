@@ -556,7 +556,9 @@ describe('DesktopContent', () => {
   it('builds filters only from the options the API listed', async () => {
     const html = await render({ filters: { os: 'windows' } })
     expect(html).toContain('name="os"')
-    expect(html).toContain('windows (30)')
+    expect(html).toContain('Windows (30)')
+    expect(html).toContain('value="windows" selected=""')
+    expect(html).toContain('macOS (4)')
     expect(html).toContain('name="plan"')
     const none = await render({
       desktop: loaded({

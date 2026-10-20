@@ -98,6 +98,30 @@ async function mount() {
 }
 
 describe('Analytics report isolation', () => {
+  it('keeps a failed refresh readable, announces the saved result and retries only the failed report', async () => {
+    const host = await mount()
+    const chart = host.querySelector('#growth .analytics-chart')
+    vi.mocked(reports.loadAudience).mockRejectedValueOnce(
+      new Error('Connection lost'),
+    )
+    const refresh = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('nav button'),
+    ).find((b) => b.textContent === 'Refresh')!
+    await act(() => refresh.click())
+    expect(host.querySelector('#growth .analytics-chart')).toBe(chart)
+    const notice = host.querySelector('.analytics-refresh-notice')!
+    expect(notice.textContent).toContain('Saved results')
+    expect(
+      notice.querySelector('button')?.getAttribute('aria-label'),
+    ).toContain("Accounts couldn't refresh")
+    await act(() => notice.querySelector('button')!.click())
+    expect(document.activeElement).toBe(host.querySelector('#growth-heading'))
+    expect(host.querySelector('.analytics-refresh-notice')).toBeNull()
+    expect(reports.loadAudience).toHaveBeenCalledTimes(3)
+    expect(reports.loadWebsite).toHaveBeenCalledTimes(2)
+    expect(reports.loadRevenue).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps population controls on every tab and passes all dimensions to account reports', async () => {
     const host = await mount()
     const select = host.querySelector<HTMLSelectElement>(
@@ -243,6 +267,41 @@ describe('Analytics report isolation', () => {
       }),
     )
     expect(host.textContent).toContain('Thirty-day signup result')
+  })
+
+  it('preserves the open diagnostic snapshot on toolbar refresh and replaces it in place', async () => {
+    let finish!: (value: analytics.SignupAnalytics) => void
+    vi.mocked(analytics.loadSignupAnalytics)
+      .mockResolvedValueOnce({
+        ...signup,
+        coverage: { ...signup.coverage, note: 'Existing diagnosis' },
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve
+          }),
+      )
+    const host = await mount()
+    const health = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+    ).find((el) => el.textContent === 'Signup health')!
+    await act(() => health.click())
+    const refresh = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('nav button'),
+    ).find((el) => el.textContent === 'Refresh')!
+    await act(() => refresh.click())
+    expect(analytics.loadSignupAnalytics).toHaveBeenCalledTimes(2)
+    expect(host.textContent).toContain('Existing diagnosis')
+    expect(host.textContent).not.toContain('Loading signup diagnostics')
+    await act(() =>
+      finish({
+        ...signup,
+        coverage: { ...signup.coverage, note: 'Refreshed diagnosis' },
+      }),
+    )
+    expect(host.textContent).toContain('Refreshed diagnosis')
+    expect(host.textContent).not.toContain('Existing diagnosis')
   })
 
   it('isolates malformed cohorts from the growth report', async () => {

@@ -12,6 +12,7 @@ import type { ReactNode } from 'react'
 import type { Measured } from '@/api/admin'
 import type { Bucket, Comparison, Coverage, Period } from '@/api/adminDashboard'
 import type { Verdict, VerdictTone } from '@/lib/overviewVerdicts'
+import { AdminApiError } from '@/api/adminRequest'
 import {
   PERIODS,
   bucketLabel,
@@ -42,18 +43,22 @@ export interface Report<T> {
   slow?: boolean
   retry?: () => void
   cancel?: () => void
+  /** Read-only snapshots may remain visible, explicitly stale, after a failed refresh. */
+  retainSnapshot?: boolean
 }
 
 /**
  * One bounded load per `load` identity. Changing the period (or the refresh
  * counter) is a new `load`, which aborts the old request and starts over.
  * The previous `data` stays until the new report lands (`refreshing`); an
- * error replaces it, so stale data is never shown as fresh after a failure.
+ * error replaces it by default. Read-only Analytics may opt into retaining
+ * the matching snapshot with an explicit error notice; auth failures still clear it.
  */
 export function useReport<T>(
   load: (signal: AbortSignal) => Promise<T>,
   population?: string,
   cacheTime = 0,
+  retainSnapshot = false,
 ) {
   // Page-local only: never survives staff sign-out, route unmount or a new user.
   const cache = useRef(new Map<string | undefined, { data: T; at: number }>())
@@ -131,10 +136,19 @@ export function useReport<T>(
       (error: unknown) => {
         window.clearTimeout(slowTimer)
         if (!controller.signal.aborted) {
+          const accessDenied =
+            error instanceof AdminApiError &&
+            (error.status === 401 || error.status === 403)
+          if (accessDenied) cache.current.clear()
           cache.current.delete(population)
-          setState({
+          setState((current) => ({
             population,
-            data: null,
+            data:
+              retainSnapshot &&
+              !accessDenied &&
+              current.population === population
+                ? current.data
+                : null,
             error:
               error instanceof Error
                 ? error.message
@@ -142,7 +156,7 @@ export function useReport<T>(
             loading: false,
             refreshing: false,
             slow: false,
-          })
+          }))
         }
       },
     )
@@ -150,9 +164,10 @@ export function useReport<T>(
       window.clearTimeout(slowTimer)
       controller.abort()
     }
-  }, [attempt, load, population, cacheTime])
+  }, [attempt, load, population, cacheTime, retainSnapshot])
 
   return {
+    retainSnapshot,
     ...(state.population === population
       ? state
       : {
@@ -165,14 +180,17 @@ export function useReport<T>(
     retry: () => setAttempt((value) => value + 1),
     cancel: () => {
       request.current?.abort()
-      setState({
+      setState((current) => ({
         population,
-        data: null,
+        data:
+          retainSnapshot && current.population === population
+            ? current.data
+            : null,
         error: 'Loading canceled. You can retry.',
         loading: false,
         refreshing: false,
         slow: false,
-      })
+      }))
     },
   }
 }
@@ -188,6 +206,40 @@ export function Loaded<T>({
   children: (data: T) => ReactNode
 }) {
   if (report.data) {
+    if (report.retainSnapshot) {
+      return (
+        <div aria-busy={report.refreshing || undefined}>
+          <span role="status" className="sr-only">
+            {report.refreshing ? `Updating ${label}` : ''}
+          </span>
+          {children(report.data)}
+          {report.refreshing && report.slow && report.cancel && (
+            <button
+              type="button"
+              onClick={report.cancel}
+              className="mt-2 min-h-10 cursor-pointer rounded-lg px-3 text-xs font-semibold ring-1 ring-base-300 focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              Cancel update
+            </button>
+          )}
+          {report.error && (
+            <div
+              className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs"
+              role="status"
+            >
+              <strong>Showing the last loaded {label}.</strong> {report.error}{' '}
+              <button
+                type="button"
+                onClick={report.retry}
+                className="min-h-10 cursor-pointer rounded px-2 font-semibold underline focus-visible:outline-2 focus-visible:outline-primary"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+        </div>
+      )
+    }
     if (!report.refreshing) return <>{children(report.data)}</>
     return (
       <div aria-busy="true">

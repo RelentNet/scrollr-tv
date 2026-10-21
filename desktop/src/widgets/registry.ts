@@ -13,7 +13,7 @@ const modules = import.meta.glob<Record<string, WidgetManifest>>("./*/FeedTab.ts
 
 /** Canonical display order for widget tabs. Anything not listed sorts by id
  *  after these. */
-export const WIDGET_ORDER = ["clock", "timer", "weather", "sysmon", "uptime", "github"];
+export const WIDGET_ORDER = ["clock", "timer", "weather", "sysmon", "uptime", "github", "notes"];
 
 const registry = new Map<string, WidgetManifest>();
 for (const mod of Object.values(modules)) {

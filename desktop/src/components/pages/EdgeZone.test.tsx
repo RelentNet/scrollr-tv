@@ -24,6 +24,7 @@ const data = {
   uptime: [],
   github: [],
   githubThings: [],
+  notes: [],
 } as WidgetTickerData;
 const pin = (widget: string, subject: string): WidgetPin => ({ widget, subject, side: "right" });
 

@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/index.mjs",
     "dev": "node --watch src/index.mjs",
-    "build:overlay": "npm --prefix ../desktop run build:overlay",
+    "build:tv": "npm --prefix ../desktop run build:tv",
     "build:win": "node scripts/build-win.mjs"
   },
   "devDependencies": {

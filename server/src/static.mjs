@@ -1,7 +1,7 @@
-// The built overlay (desktop/dist-overlay, Vite base /overlay/).
+// The built overlay (desktop/dist-tv, Vite base /tv/).
 //
-// Two homes: inside the single-file executable as SEA assets (listed by the
-// bundled manifest), or on disk next to the source for `npm start`.
+// Two homes: inside the single-file executable as SEA assets, or on disk
+// next to the source for `npm start`.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,14 +31,14 @@ const isSea = sea.isSea();
 const DIST =
   process.env.SCROLLR_TV_DIST ??
   (typeof import.meta.url === "string"
-    ? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../desktop/dist-overlay")
-    : path.resolve(process.cwd(), "desktop/dist-overlay"));
+    ? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../desktop/dist-tv")
+    : path.resolve(process.cwd(), "desktop/dist-tv"));
 
 /** The file at `rel` (posix, no leading slash) as a Buffer, or null. */
 async function read(rel) {
   if (isSea) {
     try {
-      return Buffer.from(sea.getAsset(`overlay/${rel}`));
+      return Buffer.from(sea.getAsset(`tv/${rel}`));
     } catch {
       return null;
     }
@@ -52,17 +52,17 @@ async function read(rel) {
   }
 }
 
-/** Serve `/overlay/...`. Returns false when the path is not under it. */
-export async function serveOverlay(req, res) {
+/** Serve `/tv/...`. Returns false when the path is not under it. */
+export async function serveTv(req, res) {
   const u = new URL(req.url, "http://x");
-  if (u.pathname === "/overlay") {
-    res.writeHead(302, { Location: `/overlay/${u.search}` }).end();
+  if (u.pathname === "/tv" || u.pathname === "/overlay" || u.pathname === "/overlay/") {
+    res.writeHead(302, { Location: `/tv/${u.search}` }).end();
     return true;
   }
-  if (!u.pathname.startsWith("/overlay/")) return false;
+  if (!u.pathname.startsWith("/tv/")) return false;
 
-  let rel = decodeURIComponent(u.pathname.slice("/overlay/".length));
-  if (rel === "" || rel.endsWith("/")) rel += "overlay.html";
+  let rel = decodeURIComponent(u.pathname.slice("/tv/".length));
+  if (rel === "" || rel.endsWith("/")) rel += "tv.html";
   if (rel.split("/").includes("..")) {
     res.writeHead(400).end();
     return true;
@@ -70,7 +70,7 @@ export async function serveOverlay(req, res) {
   const buf = await read(rel);
   if (!buf) {
     res.writeHead(404, { "Content-Type": "text/plain" }).end(
-      isSea ? "not in this build" : `not found; is the overlay built? (npm run build:overlay) looked in ${DIST}`,
+      isSea ? "not in this build" : `not found; is the overlay built? (npm run build:tv) looked in ${DIST}`,
     );
     return true;
   }
@@ -83,6 +83,6 @@ export async function serveOverlay(req, res) {
   return true;
 }
 
-export function overlayLocation() {
+export function tvLocation() {
   return isSea ? "embedded" : DIST;
 }

@@ -6,6 +6,8 @@ import { getStore, removeStore, setStore } from "./lib/store";
 import { LS_CLOCK_FORMAT, LS_WEATHER_UNIT } from "./constants";
 import { GITHUB_DEFAULTS, migrateGitHub } from "./widgets/github/config";
 import type { GitHubWidgetConfig } from "./widgets/github/config";
+import { NOTES_DEFAULTS, migrateNotes } from "./widgets/notes/config";
+import type { NotesWidgetConfig } from "./widgets/notes/config";
 
 export type { GitHubWidgetConfig };
 
@@ -347,6 +349,7 @@ export interface WidgetPrefs {
   sysmon: SysmonWidgetConfig;
   uptime: UptimeWidgetConfig;
   github: GitHubWidgetConfig;
+  notes: NotesWidgetConfig;
 }
 
 // ── DataWidgetRow display preferences ─────────────────────────────────
@@ -532,6 +535,7 @@ const DEFAULT_WIDGETS: WidgetPrefs = {
     url: "",
   },
   github: GITHUB_DEFAULTS,
+  notes: NOTES_DEFAULTS,
 };
 
 const DEFAULT_PREFS: AppPreferences = {
@@ -741,6 +745,7 @@ export function mergeWidgetPrefs(saved?: Partial<WidgetPrefs>): WidgetPrefs {
     },
     // SCROLLR-312: every release's repo list, migrated without losing one.
     github: migrateGitHub(saved.github),
+    notes: migrateNotes((saved as Record<string, unknown>).notes),
   };
 }
 

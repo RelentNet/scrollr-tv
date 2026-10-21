@@ -98,6 +98,6 @@ test-results/
 results/
 
 # scrollr-tv (docs/SCROLLR_TV.md): overlay build and the packaged server
-desktop/dist-overlay
+desktop/dist-tv
 server/build
 server/dist

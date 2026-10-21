@@ -388,6 +388,23 @@ export interface GitHubChipData {
   flashTone?: "up" | "down";
 }
 
+/** One item of a Notes document (docs/SCROLLR_TV.md): a chip on the rail, a cell on the document's page. */
+export interface NoteChipData {
+  /** `notes-<source url>#<item id>`. */
+  id: string;
+  /** The document's name: the chip's cap, the cell's kicker. */
+  doc: string;
+  /** The pin label: the title. */
+  label: string;
+  title: string;
+  /** The line under the title; empty when the file gave none. */
+  detail: string;
+  /** The item's time in the bar's format ("9:00A"), or empty. */
+  at: string;
+  /** The item's link, or empty. */
+  url: string;
+}
+
 export interface WidgetTickerData {
   clock: ClockChipData[];
   timer: ClockChipData[];
@@ -397,6 +414,7 @@ export interface WidgetTickerData {
   github: GitHubChipData[];
   /** The GitHub page's fill (SCROLLR-312, `thingsFor`): what needs you past each repo's own cell, then what shipped. Not a tab. */
   githubThings: GitHubThing[];
+  notes: NoteChipData[];
 }
 
 import type { Widget, WidgetDef, CatalogResponse } from "./api.generated";

@@ -1,174 +1,145 @@
 # scrollr-tv
 
-A RelentNet fork of [Scrollr](https://github.com/doughknee/myscrollr) (AGPL-3.0)
-that turns the Scrollr bar into a **broadcast overlay**: the real ticker, fed by
-your real account on the **production** backend, plus a **lower third**, served as
-a plain web page that OBS, vMix and a Raspberry Pi can lay over video. It also
-adds **local file widgets**: content from a file on your machine (notes, a
-schedule) with no server change. No Tauri build is needed for any of this.
+The Scrollr ticker as a **broadcast overlay**: a signed-in user's own bar,
+served as a plain web page to OBS, vMix and a Raspberry Pi, plus a **Notes**
+widget that puts schedules and house notes from text files on the bar. Built
+for an LED wall at conventions.
 
-Upstream is the `upstream` git remote. Pull it in with
-`git fetch upstream && git merge upstream/main`.
+Upstream is [doughknee/myscrollr](https://github.com/doughknee/myscrollr), the
+`upstream` git remote (`git fetch upstream && git merge upstream/main`).
+
+## The rule
+
+Scrollr runs **one ticker codebase on several hosts** through small adapters:
+the desktop app (Tauri), the website's live bar (`desktop/embed.html` +
+`src/embed/boot.ts`) and dev web mode (`desktop/web.html` + `src/dev/web.ts`).
+Each adapter says where the store, HTTP, SSE and sign-in come from and then
+imports `src/main.tsx` unchanged.
+
+**scrollr-tv is one more host of that same ticker.** If a change touches a
+chip, a page, a layout or a data fetch, it goes in `desktop/src` for every
+host, never in the tv folder or the server.
+
+## The decision
+
+The overlay shows a **signed-in user's own bar** (the web.ts path), not the
+website's curated anonymous bar (the embed path). The embed is anonymous,
+polls the public feed every 30 s with no live stream and falls back to
+fixture headlines; the wall needs the account's widgets and its live pushes.
+(Dan, 20 Oct 2026.)
+
+## What is where
+
+| Piece | Where | Modeled on |
+|---|---|---|
+| Overlay entry | `desktop/tv.html`, `desktop/src/tv/boot.ts`, `src/tv/.env.tv`; Vite mode `tv` (`npm run build:tv` → `dist-tv/`, base `/tv/`) | `embed.html` + `src/embed/boot.ts`, the embed block in `vite.config.ts` |
+| Server | `server/` (Node 22, no runtime deps): serves the build, runs the one-time sign-in, holds and refreshes the token, forwards `/api/*` and the SSE stream, lists and serves the files folder as text | the desktop's PKCE flow (`desktop/src/auth.ts`, same `127.0.0.1:19284` redirect, so the Logto app needs no change) |
+| Notes widget | `desktop/src/widgets/notes/` (reader, config, data, page), `components/pages/cells/NoteCell.tsx`, and the same hooks the GitHub widget has in `useWidgetTickerData`, `widgetPages`, `PagedBar`, `CappedChip`, `ScrollrTicker`, `chipColors`, `style.css`, `preferences`, `feed.tsx` | the GitHub and Uptime widgets |
+| Packaging | `server/scripts/build-win.mjs`: one `scrollr-tv.exe` (Node SEA + postject) with the tv build embedded | — |
+
+### The adapter (`src/tv/boot.ts`)
+
+Stands in for Tauri and nothing else: an in-memory store seeded from the
+query string, the app's HTTP calls sent to the server's `/api`, the SSE
+stream relayed from `/api/events`, an in-page event table, fixed answers for
+windows and monitors. It sends a placeholder bearer; the server swaps in the
+real one, so no token is ever in the page. It seeds the Notes widget's
+sources from the server's `GET /files` and reloads when that list changes.
+
+Query params: `bg=transparent|solid` (default transparent; the bar paints its
+own surface), `theme=<family>-<light|dark>` (default scrollr-dark),
+`mode=pages|continuous`, `keypad=0|1` (the hover keypad, a real preference;
+default off), `utils=clock,weather` (edge utilities, default clock),
+`notes=0` (leave the folder off the bar).
+
+### The Notes widget
+
+A utility widget (no server source), id `notes`, colour `#14b8a6`. Its
+config is a list of **URLs** (`prefs.widgets.notes.sources`): a file the
+scrollr-tv server serves from its folder, a raw file on GitHub, a shared
+drive's direct link. Local paths wait on the Tauri filesystem plugin, which
+the app does not ship yet.
+
+- **Reader** (`read.ts`, pure, tested): Markdown or text (first `# Heading`
+  names the document; each bullet or line is an item; `Title — detail`,
+  `Title | detail` or `Title: detail` split into two lines; a leading time
+  orders the day) or JSON (`{ "name", "items": [{ "title", "detail"?, "at"?,
+  "link"? }] }`).
+- **Data** (`types.ts`): whichever window has the widget reads the sources
+  every 15 s and writes the documents to the store; the other window reads
+  the store, as Uptime and GitHub do. On tv the ticker is the only window,
+  so it reads them itself.
+- **Pages**: one page per document, in source order, items as written, one
+  tier (a schedule is never re-ranked); a long document runs on to more
+  pages; a short one stretches like a GitHub page (`notesPages`). The cell
+  (`NoteCell`, min column 300) is three lines, three sizes: the document's
+  name in the ink with the item's time right-aligned, the title, the detail
+  (mounted blank when none).
+- **Continuous**: one capped chip per item, rotating through the capped
+  slots like Uptime and GitHub: the document's name as the cap, title over
+  detail, the time in the fixed right cell (reserved at 6ch).
+- **Band**: `NOTES`, no chip (nothing "happens" in a file). Nothing to show:
+  no page and no Also entry, as GitHub.
+
+### Server routes
+
+`/` status page (account, overlay URL, sign in / out, the files folder),
+`/auth/state`, `/auth/login`, `/auth/logout`, `/api/*`, `/tv/`, `/files`
+(JSON list), `/files/<name>` (the file, CORS open so the desktop app's own
+Notes widget can read it). `/overlay` redirects to `/tv/` for sources set up
+before the rename.
+
+Files folder: `%APPDATA%\scrollr-tv\files` (Windows) or
+`~/.config/scrollr-tv/files`, or `--files <dir>` / `SCROLLR_TV_FILES`. Two
+sample files are written on first run. Files sort by name, so
+`1-main-stage.md`, `2-gaming-room.md` fixes the order of the pages.
 
 ## Targets
 
-| Target | How the overlay gets in | Notes |
-|---|---|---|
-| OBS | Browser Source → `http://localhost:7331/overlay?bg=transparent`, 1920×1080 | CEF honours the transparent body |
-| vMix | Web Browser input, same URL | vMix's browser is Chromium too |
-| Raspberry Pi | Chromium kiosk page: HDMI capture full-frame as a `<video>`, bar on top, lower third over it, HDMI out | see "Pi" below |
+| Target | How |
+|---|---|
+| OBS | Browser Source `http://localhost:7331/tv/`, **1920×64** (1280×64 at 720p), at the top of the canvas. The bar is exactly 64 px tall and paints its own surface, so no transparency is needed; a full-canvas source also works |
+| vMix | Web Browser input, same URL and size |
+| Raspberry Pi | [RelentNet/scrollr-tv#1](https://github.com/RelentNet/scrollr-tv/issues/1): the server on the Pi, Chromium kiosk, HDMI capture under the bar |
 
-All three are browsers, so the whole product is **one web page plus one small
-local server**. The Tauri desktop app stays untouched for upstream merges.
+## Running it
 
-## What Scrollr already has, and what is missing
-
-- **`desktop/embed.html` + `src/embed/boot.ts`** (served live at
-  `myscrollr.com/bar/`): the real ticker bundle in a plain page. But it is
-  anonymous: it reads `api.myscrollr.com/public/feed`, not your account, so no
-  saved widgets, no custom RSS, no GitHub data, no SSE pushes.
-- **`desktop/web.html` + `src/dev/web.ts`** (web mode): the real app in a
-  browser with the real Logto sign-in and the real `/dashboard` + SSE. But it
-  is dev-only by design: the adapter refuses to run outside `vite dev`, API
-  calls go through Vite's `/__api` proxy because the API sends no CORS headers
-  for localhost, and the token lives in that browser profile's localStorage,
-  which OBS's and vMix's browsers do not share.
-
-So the missing piece is a **buildable browser runtime** whose auth does not live
-in the page.
-
-## Design
-
-```
-                 sign in once (browser tab, Logto PKCE, redirect → /callback)
-                                     │
-  ┌──────────────────────────────────▼───────────────────────────────┐
-  │  scrollr-tv server   (Node, localhost:7331, runs on PC or Pi)    │
-  │   • holds + refreshes the Logto token (file on disk)             │
-  │   • /api/*  → api.myscrollr.com with Bearer added (fixes CORS)   │
-  │   • /sse    → relays the dashboard SSE stream                    │
-  │   • /files  → watches the localfile widget's files               │
-  │   • /control UI + WebSocket → show / hide lower thirds           │
-  │   • serves the built overlay page                                │
-  └──────┬──────────────────────┬───────────────────────┬────────────┘
-         │                      │                       │
-   OBS browser source     vMix web input        Pi Chromium kiosk
-   /overlay?bg=transparent                      /overlay?video=capture
+```sh
+cd desktop && npm ci && npm run build:tv     # the overlay bundle
+cd ../server && npm start                     # http://localhost:7331/
 ```
 
-The overlay page is a dumb client: no token, no sign-in, no localStorage it
-depends on. That is what lets every browser show the same thing.
+Sign in once on the status page (it opens on a signed-out start; `--no-open`
+for services). Then point OBS at `/tv/`.
 
-### Pieces (all under `desktop/` so they share the ticker code)
+Windows executable: `cd server && npm install && npm run build:win` →
+`server/dist/scrollr-tv.exe` (about 90 MB, the Node runtime and the overlay
+embedded; unsigned). macOS, Linux and the Pi's arm64 use the same script on
+that OS once Windows is confirmed. Packaging never changes the code.
 
-| Piece | Where | Built on |
-|---|---|---|
-| Overlay entry | `desktop/overlay.html`, `src/overlay/boot.ts` | `src/embed/boot.ts` for the Tauri stand-in, `src/dev/web.ts` for the real-API path. Vite mode `overlay`, like `build:embed`. |
-| Lower third | `src/overlay/LowerThird.tsx` | New. Name/title/strap, in/out animation, themed with the bar's palette. Driven by WebSocket messages from the server. |
-| Transparent mode | `?bg=transparent` | `embed.html` hardcodes `#141420`; the overlay leaves the body clear and only the bar and strap paint. |
-| Server | `server/` (new top-level package, Node 22) | Logto PKCE sign-in with `http://localhost:7331/callback` as redirect, token store, API proxy, SSE relay, file watcher, control UI. |
-| Local file widget | `desktop/src/widgets/localfile/` | utility widget (below); in overlay mode it reads files through the server, in the Tauri app through `plugin-fs`. |
+## For Brandon's review (spec items, not built)
 
-The Logto desktop app already allows `http://localhost:5190/callback` for web
-mode. The server's `/callback` on 7331 needs the same allowance on the Logto
-app, or the server can run its auth on 5190 to reuse it. Confirm with Brandon.
+Three things the wall would like that are **ticker design decisions**, so
+they are proposals against `docs/CHIP_SPEC.md`, not code in this fork:
 
-### Pi
+1. **A tagline under the band's name** ("powered by Scrollr") for the Notes
+   widget: §P.2 says the name row and pills row are the band; a third line
+   is a spec change.
+2. **A QR code on the edge zone** (a link to myscrollr.com in place of the
+   clock): a new utility per §P.10, with a sizer and a Cycle slot.
+3. **A tab and colour per document** on the Notes pages: §7.1 says one
+   colour per widget and §P.2 one code per widget. Today every document
+   shares `NOTES` and the widget colour, and the cell's kicker names the
+   document instead.
 
-Pi 5 with a USB HDMI capture stick (UVC, 1080p) or a CSI HDMI-in board.
-Chromium in kiosk mode opens `/overlay?video=capture`, which renders the
-capture device via `getUserMedia` as a full-screen `<video>` with the bar and
-lower third on top, and the Pi's HDMI output carries the composite. One page,
-no GStreamer. Expected added latency is a few frames from the USB capture.
-If that is too much, phase 2 swaps to a GStreamer `compositor` with the overlay
-rendered as a transparent browser layer; the overlay page does not change.
+Also: `NoteCell` was not drawn on the canvas first (§12A step 4); the
+gallery and `cells.spec.ts` entries are still to do.
 
-The server runs on the Pi too (Node on arm64), so the Pi is self-contained.
+## Done, and next
 
-## Local file widget (built: schedules and notes for the LED wall)
-
-**The use case:** at a convention, the LED wall shows the day's schedule and
-house notes. Edit a text file, the bar follows within seconds.
-
-**How it works.** The server watches a folder (`server/src/files.mjs`:
-`%APPDATA%\scrollr-tv\files`, or `--files <dir>` / `SCROLLR_TV_FILES`; two
-sample files are written on first run) and serves it as `GET /files`. The
-overlay (`src/overlay/boot.ts`, "The files widget") turns each file into a
-news-source widget: it extends the catalog response with one entry per file
-(`files_<slug>`, source `rss`, the file's name and colour) and adds a widget
-row and headline rows to the dashboard response. So **every file is its own
-bar**: in Pages mode the ticker cycles Main Stage, then Gaming Room, then
-K-Pop Room, each page showing only that area's schedule under its own tab and
-colour, and in Continuous mode each area's chips carry its tab. The bar draws
-them with the same headline chips and page cells it uses for news, and no
-shared ticker code changed. A file change is pushed onto the app's own event
-bus as CDC records, exactly as a real feed update arrives; a new or renamed
-file triggers a catalog refetch. `"mode": "merged"` in `_overlay.json` folds
-every file into one Custom RSS widget instead (one page, a column per file).
-
-**File formats, one feed per file.** The feed's name is the chip's tab
-(SCHEDULE, NOTES).
-
-- `name.md` / `name.txt`: the first `# Heading` is the feed name (else the
-  file name); an optional `color: #hex` line sets the area's colour (else one
-  from a palette). Each `- ` bullet or non-empty line is an item. `Title —
-  detail`, `Title | detail` or `Title: detail` split into headline and detail
-  line. A leading `9:00 AM` / `14:30` keeps the day in order. Files sort by
-  name, so `1-main-stage.md`, `2-gaming-room.md` fixes the cycle order.
-  ```md
-  # Main Stage
-  color: #ee802f
-  - 11:30 AM Love & Bugs In Another World — Main Stage, until 12:15
-  - 1:00 PM Dragon Ball Universe — Main Stage, until 1:45
-  ```
-- `name.json`: `{ "name": "...", "color"?: "#hex", "items": [ { "title",
-  "detail"?, "at"?, "link"? } ] }`.
-
-**Tagline, title and QR code.** `_overlay.json` in the files folder
-(`{ "mode": "split", "tagline": "powered by Scrollr" }`) puts a line under
-each area's tab; in merged mode `"title"` names the one tab. `?title=` /
-`?tagline=` override per source. A QR code for myscrollr.com sits at the right end of the bar
-in place of the clock (`?qr=<url>` for another link, `?qr=0` for none, `?utils=clock`
-to have the clock back beside it); the bar narrows by the code's 72 px so
-nothing runs under it.
-
-**Why not a new widget kind.** A native utility widget (the earlier plan: a
-`localfile` folder under `desktop/src/widgets/`, modeled on `github/`) needs
-hooks in `useWidgetTickerData`, `widgetPages`, `PagedBar`, `chipColors` and the
-ticker's chip roster, all shared files that upstream changes often. Riding the
-news renderer keeps the fork's diff to `server/` and `src/overlay/`. The costs:
-items rotate through three chip slots like headlines, and the page cell's age
-column reads "now" (chips show no age: `published_at` is null on purpose). A
-dedicated schedule cell can come later without changing the file format.
-
-## Order of work
-
-1. ~~**Server, auth, proxy.**~~ Done: `server/`, Windows exe.
-2. ~~**Overlay page.**~~ Done: `overlay.html`, 1920×64 browser source.
-3. ~~**Local file widget.**~~ Done, as above.
-4. **Lower third.** Component, WebSocket, control page with show/hide; can
-   read entries from the same files folder.
-5. **Weather and system monitor on the overlay.** Weather from a city in the
-   URL (Open-Meteo works from a browser); sysmon from the server's own OS
-   stats (on the Pi, the Pi's).
-6. **Pi.** [RelentNet/scrollr-tv#1](https://github.com/RelentNet/scrollr-tv/issues/1).
-7. **Upstream merges.** All new code is under `server/` and `src/overlay/`,
-   with one Vite mode and one npm script in `desktop/`.
-
-## Running the desktop app itself (optional)
-
-`desktop/.env` already points at production (public endpoints and the public
-PKCE client id from `scripts/dev/setup.mjs`; the file is git-ignored):
-
-```
-VITE_API_URL=https://api.myscrollr.com
-VITE_AUTH_ENDPOINT=https://auth.myscrollr.com
-VITE_LOGTO_APP_ID=6y2wqgvkdqmulthvose81
-VITE_LOGTO_RESOURCE=https://api.myscrollr.com
-```
-
-- Web mode, no Rust: `cd desktop && npm ci && npm run web` →
-  http://localhost:5190/web.html. Sign in with the button.
-- Real Tauri window: install Rust (`winget install Rustlang.Rustup`, then
-  `rustup default stable-msvc`), Visual Studio Build Tools with the C++
-  workload, then `npm run tauri:dev`.
+1. ~~Server, sign-in, proxy; Windows exe.~~
+2. ~~Overlay page as a host of the shared ticker.~~
+3. ~~Notes widget, shared.~~
+4. Weather and system monitor on the overlay (a city in the URL; sysmon from
+   the server's own OS stats).
+5. The Pi (issue 1).

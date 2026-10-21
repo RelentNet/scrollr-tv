@@ -24,6 +24,7 @@ import type {
   SysmonChipData,
   UptimeChipData,
   GitHubChipData,
+  NoteChipData,
   WidgetTickerData,
 } from "../types";
 import type { TimerState } from "../widgets/timer/types";
@@ -34,6 +35,9 @@ import type { FlashMemo } from "../widgets/github/types";
 import type { GitHubBoardRepo } from "../api/client";
 import { GITHUB_DEFAULTS, inQuietHours, migrateGitHub } from "../widgets/github/config";
 import type { GitHubWidgetConfig } from "../widgets/github/config";
+import { migrateNotes } from "../widgets/notes/config";
+import { NOTES_POLL_S, fetchDocs, loadDocs, noteChips, saveDocs } from "../widgets/notes/types";
+import { LS_NOTES_DOCS } from "../constants";
 
 // Per window: each ticker flashes a repo once per worthy change.
 const githubFlash = new Map<string, FlashMemo>();
@@ -68,6 +72,7 @@ const EMPTY: WidgetTickerData = {
   uptime: [],
   github: [],
   githubThings: [],
+  notes: [],
 };
 
 // ── Time formatting helpers ─────────────────────────────────────
@@ -478,6 +483,19 @@ export function useWidgetTickerData(
     return { github, githubThings: quiet ? [] : thingsFor(board, githubCfg.repos) };
   }, [enabledWidgets, githubCfg]);
 
+  // ── Build notes chips ─────────────────────────────────────────
+  // The documents come from the store (docs/SCROLLR_TV.md); this window
+  // reads the sources itself while the widget is on the bar (below), since
+  // on scrollr-tv the ticker is the only window there is.
+  const notesJson = JSON.stringify(widgetPrefs.notes ?? null);
+  const notesCfg = useMemo(() => migrateNotes(JSON.parse(notesJson)), [notesJson]);
+  const buildNotes = useCallback((): NoteChipData[] => {
+    if (!enabledWidgets.has("notes")) return [];
+    // Only sources still configured, in config order: a removed one leaves at once.
+    const docs = loadDocs();
+    return noteChips(notesCfg.sources.flatMap((s) => docs.filter((d) => d.url === s.url)));
+  }, [enabledWidgets, notesCfg]);
+
   // ── Polling intervals ─────────────────────────────────────────
 
   useEffect(() => {
@@ -487,6 +505,7 @@ export function useWidgetTickerData(
     const hasSysmon = enabledWidgets.has("sysmon");
     const hasUptime = enabledWidgets.has("uptime");
     const hasGithub = enabledWidgets.has("github");
+    const hasNotes = enabledWidgets.has("notes");
 
     if (
       !hasClock &&
@@ -494,7 +513,8 @@ export function useWidgetTickerData(
       !hasWeather &&
       !hasSysmon &&
       !hasUptime &&
-      !hasGithub
+      !hasGithub &&
+      !hasNotes
     ) {
       setData(EMPTY);
       return;
@@ -509,8 +529,28 @@ export function useWidgetTickerData(
         sysmon: buildSysmonChips(),
         uptime: buildUptimeChips(),
         ...buildGithub(),
+        notes: buildNotes(),
       });
     };
+
+    // Notes: read the sources on a fixed cadence and share them through the
+    // store (the widget page does the same while open; the last writer wins
+    // and both say the same thing).
+    let notesCancelled = false;
+    const readNotes = async () => {
+      if (notesCfg.sources.length === 0) return;
+      const docs = await fetchDocs(notesCfg.sources, loadDocs());
+      if (notesCancelled) return;
+      saveDocs(docs);
+      setData((prev) => ({ ...prev, notes: buildNotes() }));
+    };
+    const notesInterval = hasNotes ? setInterval(() => void readNotes(), NOTES_POLL_S * 1000) : null;
+    if (hasNotes) void readNotes();
+    const unsubNotesDocs = hasNotes
+      ? onStoreChange(LS_NOTES_DOCS, () => {
+          setData((prev) => ({ ...prev, notes: buildNotes() }));
+        })
+      : null;
 
     // Clock: update every second
     const clockInterval = hasClock
@@ -617,6 +657,9 @@ export function useWidgetTickerData(
       if (sysmonInterval) clearInterval(sysmonInterval);
       if (uptimeInterval) clearInterval(uptimeInterval);
       if (githubInterval) clearInterval(githubInterval);
+      notesCancelled = true;
+      if (notesInterval) clearInterval(notesInterval);
+      unsubNotesDocs?.();
     };
     // Suppressed: JSON.stringify stabilizes the dep by value instead of reference,
     // so the effect only re-runs when the array contents actually change.
@@ -629,6 +672,8 @@ export function useWidgetTickerData(
     buildSysmonChips,
     buildUptimeChips,
     buildGithub,
+    buildNotes,
+    notesCfg,
   ]);
 
   return data;

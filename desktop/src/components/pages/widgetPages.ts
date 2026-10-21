@@ -16,7 +16,7 @@
  *    same clock (SCROLLR-298, SCROLLR-303).
  *  - `chip` is the band's "something is happening now" mark (SCROLLR-303).
  */
-import type { DashboardResponse, Game, GitHubChipData, RssItem, Trade } from "../../types";
+import type { DashboardResponse, Game, GitHubChipData, NoteChipData, RssItem, Trade } from "../../types";
 import type { TickerContext } from "../../datawidgets/ticker";
 import { dropPinned, scopedRows } from "../../datawidgets/ticker";
 import type { WidgetPin } from "../../preferences";
@@ -35,6 +35,7 @@ import { NEWS_MIN_COL } from "./cells/NewsCell";
 import { QUOTE_MIN_COL } from "./cells/QuoteCell";
 import { ALSO_MIN_COL } from "./cells/AlsoCell";
 import { REPO_MIN_COL } from "./cells/RepoCell";
+import { NOTE_MIN_COL } from "./cells/NoteCell";
 import {
   TIER,
   columnsFor,
@@ -46,7 +47,7 @@ import {
   type WidgetPlan,
 } from "./pagePlan";
 
-export type PageWidgetKind = "sports" | "news" | "finance" | "github" | "also";
+export type PageWidgetKind = "sports" | "news" | "finance" | "github" | "notes" | "also";
 
 /** One quiet widget on the Also page. */
 export interface AlsoItem {
@@ -61,7 +62,7 @@ export interface PageItem {
   /** Stable across refetches: game id, article id, symbol, widget id. */
   key: string;
   tier: Tier;
-  data: Game | RssItem | Trade | GitHubChipData | GitHubThing | AlsoItem;
+  data: Game | RssItem | Trade | GitHubChipData | GitHubThing | NoteChipData | AlsoItem;
   /** One of the user's favourite teams is playing (GameCell's top line). */
   mine?: boolean;
   /** `data-pin-subject` JSON for the right-click menu (utils/pinTarget). */
@@ -134,6 +135,8 @@ export function buildPageWidgets(
   github: readonly GitHubChipData[] = [],
   /** What fills the GitHub page's empty columns (`thingsFor`). */
   githubThings: readonly GitHubThing[] = [],
+  /** The Notes items (useWidgetTickerData), one cell each, a page per document (docs/SCROLLR_TV.md). */
+  notes: readonly NoteChipData[] = [],
 ): PageWidget[] {
   const out: PageWidget[] = [];
   const also: PageItem[] = [];
@@ -141,6 +144,11 @@ export function buildPageWidgets(
   for (const tab of activeTabs) {
     if (tab === "github") {
       const w = githubWidget(github, githubThings);
+      if (w) out.push(w);
+      continue;
+    }
+    if (tab === "notes") {
+      const w = notesWidget(notes);
       if (w) out.push(w);
       continue;
     }
@@ -302,6 +310,48 @@ export function githubPages(repos: readonly PageItem[], things: readonly PageIte
   return pages;
 }
 
+/**
+ * The Notes page (docs/SCROLLR_TV.md): every item of every document, in
+ * source order, one tier (a file's order is the order: a schedule is
+ * never re-ranked). No page: nothing to show, no Also entry, as GitHub.
+ */
+function notesWidget(items: readonly NoteChipData[]): PageWidget | null {
+  if (items.length === 0) return null;
+  return {
+    tab: "notes",
+    kind: "notes",
+    code: "NOTES",
+    hex: catalogItemById("notes")?.hex ?? "#14b8a6",
+    minCol: NOTE_MIN_COL,
+    items: items.map((n) => ({ key: n.id, tier: TIER.fresh, data: n })),
+    fill: [],
+  };
+}
+
+/**
+ * Notes' pages: a page per document (so the bar cycles area by area: Main
+ * Stage, then Gaming Room, then K-Pop Room), each as many pages as its
+ * items need at this width. A document never shares a page with another;
+ * a short document is a short page, stretched like GitHub's.
+ */
+export function notesPages(items: readonly PageItem[], cols: number): PageItem[][] {
+  const c = Math.max(1, Math.floor(cols));
+  const pages: PageItem[][] = [];
+  let doc: string | undefined;
+  let page: PageItem[] = [];
+  for (const it of items) {
+    const d = (it.data as NoteChipData).doc;
+    if (d !== doc || page.length >= c) {
+      if (page.length) pages.push(page);
+      page = [];
+      doc = d;
+    }
+    page.push(it);
+  }
+  if (page.length) pages.push(page);
+  return pages;
+}
+
 /** A widget's pages at this bar width, how many columns a full page has, and how many items it could have shown. */
 export interface PagePlan extends WidgetPlan<PageItem> {
   cols: number;
@@ -323,6 +373,7 @@ export function planAll(widgets: readonly PageWidget[], barWidth: number, edgeWi
       // Popular symbols fill a watchlist SHORTER than a page, never the tail of a long one
       // (10 symbols at 9 columns are two pages of 5, not 9 of yours and 1 of yours + 8 of theirs);
       if (w.kind === "github") return [w.tab, { pages: githubPages(w.items, w.fill, cols), cols, avail: w.items.length + w.fill.length }];
+      if (w.kind === "notes") return [w.tab, { pages: notesPages(w.items, cols), cols, avail: w.items.length }];
       const fill = w.kind === "finance" && w.items.length >= cols ? [] : w.fill;
       return [w.tab, { ...planWidget(topUp(w.items, fill, cols), (i) => i.tier, cols), cols, avail: w.items.length + fill.length }];
     }),

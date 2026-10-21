@@ -18,3 +18,5 @@ export const LS_UPTIME_MONITORS = "scrollr:widget:uptime:monitors";
 /** The GitHub board, one entry per tracked repo (SCROLLR-312; 1.7.0's `…:github:repos` held another shape). */
 export const LS_GITHUB_BOARD = "scrollr:widget:github:board";
 export const LS_SYSMON_DATA = "scrollr:widget:sysmon:data";
+/** The Notes documents, one per source (docs/SCROLLR_TV.md), written by whichever window read them. */
+export const LS_NOTES_DOCS = "scrollr:widget:notes:docs";

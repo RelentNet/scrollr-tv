@@ -47,6 +47,7 @@ import { getStore } from "../lib/store";
 import { formatTemp, weatherCodeToIcon } from "../widgets/weather/types";
 import { loadMonitors } from "../widgets/uptime/types";
 import { loadBoard, pillsFor, worstOf } from "../widgets/github/types";
+import { loadDocs } from "../widgets/notes/types";
 import {
   LS_TIMER_STATE,
   LS_WEATHER_CITIES,
@@ -860,6 +861,12 @@ function getWidgetValue(id: string, units: UnitsPrefs): string {
       const down = monitors.filter((m) => m.status !== "up").length;
       if (down > 0) return `${up} up / ${down} down`;
       return `${up} up`;
+    }
+    case "notes": {
+      const docs = loadDocs();
+      const items = docs.reduce((n, d) => n + d.items.length, 0);
+      if (docs.length === 0) return "No documents";
+      return `${items} item${items === 1 ? "" : "s"} in ${docs.length} document${docs.length === 1 ? "" : "s"}`;
     }
     case "github": {
       const { repos } = loadBoard();

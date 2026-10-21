@@ -43,6 +43,7 @@ function makeWidgetPrefs(widgetsOnTicker: string[]): WidgetPrefs {
       url: "",
     },
     github: { repos: [], quietHours: { on: false, from: "22:00", to: "08:00" }, flash: true },
+    notes: { sources: [] },
   };
 }
 

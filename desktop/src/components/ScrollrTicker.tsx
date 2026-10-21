@@ -15,6 +15,7 @@ import type {
   WidgetTickerData,
   UptimeChipData,
   GitHubChipData,
+  NoteChipData,
   ClockChipData,
   WeatherChipData,
   SysmonChipData,
@@ -24,7 +25,7 @@ import type {
   WidgetPin,
   WidgetDisplayPrefs,
 } from "../preferences";
-import { GitHubCappedChip, UptimeCappedChip } from "./chips/CappedChip";
+import { GitHubCappedChip, NotesCappedChip, UptimeCappedChip } from "./chips/CappedChip";
 import {
   ClockChip,
   SysmonChip,
@@ -168,13 +169,15 @@ function widgetChipsFor(
     return [{ key: `${wt}-chip`, node, subject: wt, pinLabel: widgetLabel }];
   }
 
-  const capped = items as Array<UptimeChipData | GitHubChipData>;
-  const render = (item: UptimeChipData | GitHubChipData) => {
+  const capped = items as Array<UptimeChipData | GitHubChipData | NoteChipData>;
+  const render = (item: UptimeChipData | GitHubChipData | NoteChipData) => {
     const shared = {
-      onClick: () => onChipClick?.(wt, item.id),
+      onClick: () => onChipClick?.(wt, item.id, (item as NoteChipData).url || undefined),
     };
     return wt === "uptime" ? (
       <UptimeCappedChip item={item as UptimeChipData} {...shared} />
+    ) : wt === "notes" ? (
+      <NotesCappedChip item={item as NoteChipData} {...shared} />
     ) : (
       <GitHubCappedChip item={item as GitHubChipData} {...shared} />
     );

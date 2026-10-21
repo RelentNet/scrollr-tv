@@ -1,12 +1,12 @@
 <!--
-  overlay.html — the scrollr-tv broadcast overlay (docs/SCROLLR_TV.md).
+  tv.html — scrollr-tv, the ticker as a broadcast overlay (docs/SCROLLR_TV.md).
 
   The real ticker bundle (src/main.tsx → App) in a plain page, built by
-  `npm run build:overlay` into dist-overlay/ and served by the scrollr-tv
-  server at /overlay/. Unlike embed.html (the website's anonymous bar) it
-  is fed by YOUR account: src/overlay/boot.ts routes the app's API calls to
-  the server on the same origin, which adds the bearer token. Read boot.ts
-  for the query params.
+  `npm run build:tv` into dist-tv/ and served by the scrollr-tv server at
+  /tv/. One more host of the one ticker, beside embed.html (the website's
+  anonymous bar) and web.html (dev web mode): src/tv/boot.ts stands in for
+  Tauri and routes the app's API calls to the server, which holds the
+  account's token. Read boot.ts for the query params.
 -->
 <!doctype html>
 <html lang="en">
@@ -14,10 +14,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
-    <title>Scrollr overlay</title>
+    <title>Scrollr TV</title>
     <script>
       // Pre-paint theme (?theme=<family>-<light|dark>, default scrollr-dark:
-      // a broadcast overlay should not follow the capture machine's colour
+      // a broadcast overlay does not follow the capture machine's colour
       // scheme) and background (?bg=transparent|solid, default transparent).
       (function () {
         var p = new URLSearchParams(location.search);
@@ -40,13 +40,13 @@
       }
       html[data-bg="solid"][data-mode="dark"], html[data-bg="solid"][data-mode="dark"] body { background: #141420; }
       html[data-bg="solid"][data-mode="light"], html[data-bg="solid"][data-mode="light"] body { background: #ffffff; }
-      /* The app's style.css paints html/body with the theme surface;
-         the bar paints its own, so in transparent mode nothing else may. */
+      /* The app's style.css paints html/body with the theme surface; the
+         bar paints its own, so in transparent mode nothing else may. */
       html[data-bg="transparent"], html[data-bg="transparent"] body, html[data-bg="transparent"] #root {
         background: transparent !important;
       }
       #root { width: 100%; height: 100%; }
-      .overlay-msg {
+      .tv-msg {
         font: 14px/1.5 system-ui, sans-serif;
         color: #e6e6f0;
         background: #141420;
@@ -54,11 +54,11 @@
         display: inline-block;
         border-radius: 0 0 8px 0;
       }
-      .overlay-msg a { color: #7cf2b4; }
+      .tv-msg a { color: #7cf2b4; }
     </style>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/overlay/boot.ts"></script>
+    <script type="module" src="/src/tv/boot.ts"></script>
   </body>
 </html>

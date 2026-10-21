@@ -17,7 +17,8 @@ import { getChipColors, chipBaseClasses } from "./chipColors";
 import { ChipCap, cappedChipClasses } from "./ChipCap";
 import type { CapTone } from "./ChipCap";
 import { OnceFlash } from "./ChipFlash";
-import type { GitHubChipData, UptimeChipData } from "../../types";
+import type { GitHubChipData, NoteChipData, UptimeChipData } from "../../types";
+import { sourceTab } from "../../utils/rssText";
 
 // ── Status → cap ────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ const UPTIME_CAP: Record<
 
 interface ShellProps {
   cap: { tone: CapTone; text: string; label: string; pulse?: boolean };
-  type: "uptime" | "github";
+  type: "uptime" | "github" | "notes";
   dim?: boolean;
   alert?: boolean;
   onClick?: () => void;
@@ -245,3 +246,28 @@ export function GitHubCappedChip({
   );
 }
 
+
+// ── Notes ───────────────────────────────────────────────────────
+
+/**
+ * One item of a Notes document (docs/SCROLLR_TV.md). The cap names the
+ * document (its tab, the first word when long, in a neutral tone: a note
+ * is never an alarm), the middle is the title over the detail, and the
+ * fixed right cell is the item's time, reserved at the widest a bar time
+ * gets ("12:00A", 6ch) so the chip never resizes as the rail turns.
+ */
+export function NotesCappedChip({ item, onClick }: { item: NoteChipData; onClick?: () => void }) {
+  const c = getChipColors("notes");
+  const tab = sourceTab(item.doc).split(/\s+/)[0] || "NOTE";
+  return (
+    <CapShell
+      cap={{ tone: "neutral", text: tab, label: item.doc }}
+      type="notes"
+      onClick={onClick}
+      end={<span className={clsx("inline-block min-w-[6ch] text-center", item.at ? c.textDim : "invisible")}>{item.at || "00:00A"}</span>}
+    >
+      <span className={clsx("truncate font-semibold", c.text)}>{item.title}</span>
+      <span className={clsx("truncate text-ui-chip", item.detail ? c.textFaint : "invisible")}>{item.detail || " "}</span>
+    </CapShell>
+  );
+}

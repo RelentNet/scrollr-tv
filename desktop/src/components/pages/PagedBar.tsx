@@ -46,7 +46,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, type LucideIcon } from "lucide-react";
 import type { DashboardResponse, Game, RssItem, Trade, WidgetTickerData } from "../../types";
 import type { WidgetPin } from "../../preferences";
-import type { GitHubChipData } from "../../types";
+import type { GitHubChipData, NoteChipData } from "../../types";
 import type { GitHubThing } from "../../widgets/github/types";
 import { financeMarketOptions } from "../../api/queries";
 import { sourceForWidget } from "../../marketplace";
@@ -76,6 +76,7 @@ import QuoteCell, { QUOTE_MIN_COL } from "./cells/QuoteCell";
 import AlsoCell from "./cells/AlsoCell";
 import RepoCell from "./cells/RepoCell";
 import ThingCell from "./cells/ThingCell";
+import NoteCell from "./cells/NoteCell";
 import { Rule, accentFor, accentStyle, inkFor, mix } from "./cells/parts";
 import EdgeZone, { buildEdge, edgeTabs } from "./EdgeZone";
 import { stepBack } from "./edgeRule";
@@ -399,6 +400,10 @@ function Cell({ widget, item, colW, dark, onChipClick }: {
       const repo = item.data as GitHubChipData;
       return <RepoCell chip={repo} dark={dark} onClick={() => onChipClick?.("github", item.key, repo.url)} />;
     }
+    case "notes": {
+      const n = item.data as NoteChipData;
+      return <NoteCell item={n} onClick={() => onChipClick?.("notes", n.id, n.url || undefined)} />;
+    }
     case "also": {
       const a = item.data as AlsoItem;
       return <AlsoCell code={a.code} text={a.text} hex={a.hex} dark={dark} onClick={() => onChipClick?.(a.tab, a.tab)} />;
@@ -447,8 +452,8 @@ export default function PagedBar({
   const awaitingMarket = shortWatchlist && !!dashboard && marketPending;
 
   const widgets = useMemo(
-    () => buildPageWidgets(dashboard, activeTabs, Date.now(), onEdge, shortWatchlist ? market : undefined, widgetData?.github, widgetData?.githubThings),
-    [dashboard, activeTabs, onEdge, market, shortWatchlist, widgetData?.github, widgetData?.githubThings],
+    () => buildPageWidgets(dashboard, activeTabs, Date.now(), onEdge, shortWatchlist ? market : undefined, widgetData?.github, widgetData?.githubThings, widgetData?.notes),
+    [dashboard, activeTabs, onEdge, market, shortWatchlist, widgetData?.github, widgetData?.githubThings, widgetData?.notes],
   );
   const edge = useMemo(() => buildEdge(widgetData, onEdge, dashboard, activeTabs), [widgetData, onEdge, dashboard, activeTabs]);
   const widgetsRef = useRef(widgets);
@@ -650,7 +655,8 @@ export default function PagedBar({
       // fill with): a full page's column width, not one item across the bar.
       // GitHub's short pages (a repo with two things) stretch instead: wider
       // cells show whole titles, and a page per repo is never a gap.
-      const short = plan.pages.length === 1 && w.kind !== "github" && items.length < plan.cols;
+      // Notes' pages stretch too: a document is a page of its own, never a gap.
+      const short = plan.pages.length === 1 && w.kind !== "github" && w.kind !== "notes" && items.length < plan.cols;
       shown.current = {
         seq: turn.seq,
         widget: w,

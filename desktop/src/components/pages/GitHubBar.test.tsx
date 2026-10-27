@@ -21,7 +21,7 @@ const chips = (n: number, quiet = false): GitHubChipData[] => repos.slice(0, n).
 describe("GitHub is never on the edge", () => {
   it("whatever the number of repos, quiet or not: the edge is for clocks, weather, timers and pins", () => {
     for (const github of [chips(1), chips(2), chips(4), chips(2, true)]) {
-      const edge = buildEdge({ clock: [], timer: [], weather: [], sysmon: [], uptime: [], github, githubThings: [] } as WidgetTickerData, [], null, ["github"]);
+      const edge = buildEdge({ clock: [], timer: [], weather: [], sysmon: [], uptime: [], github, githubThings: [], notes: [] } as WidgetTickerData, [], null, ["github"]);
       expect(edge.utilities).toEqual([]);
     }
   });

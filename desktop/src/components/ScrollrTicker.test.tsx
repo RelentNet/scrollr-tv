@@ -49,6 +49,7 @@ const widgetData: WidgetTickerData = {
   uptime: [],
   github: [],
   githubThings: [],
+  notes: [],
 };
 
 describe("ScrollrTicker", () => {

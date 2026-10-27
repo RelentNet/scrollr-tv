@@ -5,11 +5,12 @@ import fixture from "../../dev/__fixtures__/dashboard.pages.json";
 import busy from "../../dev/__fixtures__/dashboard.busy.json";
 import npr from "../../dev/__fixtures__/dashboard.npr.json";
 import gh from "../../dev/__fixtures__/github.board.json";
-import type { GitHubChipData } from "../../types";
+import type { GitHubChipData, NoteChipData } from "../../types";
 import type { GitHubBoardRepo } from "../../api/client";
 import { repoChip, thingsFor } from "../../widgets/github/types";
 import type { GitHubBoard } from "../../widgets/github/types";
 import { REPO_MIN_COL } from "./cells/RepoCell";
+import { NOTE_MIN_COL } from "./cells/NoteCell";
 import { gameMinCol } from "./cells/GameCell";
 import { NEWS_MIN_COL } from "./cells/NewsCell";
 import { QUOTE_MIN_COL } from "./cells/QuoteCell";
@@ -354,3 +355,41 @@ describe("the GitHub pages (SCROLLR-312): a page per repo, its cell then its thi
   });
 });
 
+
+describe("the Notes pages (docs/SCROLLR_TV.md): a page per document, in source order, items as written", () => {
+  const note = (doc: string, i: number): NoteChipData => ({
+    id: `notes-http://h/${doc}.md#${i}`,
+    doc,
+    label: `${doc} ${i}`,
+    title: `${doc} ${i}`,
+    detail: "",
+    at: "",
+    url: "",
+  });
+  const items = (...docs: Array<[string, number]>) => docs.flatMap(([d, n]) => Array.from({ length: n }, (_, i) => note(d, i)));
+  const keys = (w: { items: { key: string }[] }, width: number) =>
+    planAll([w as never], width, 0).get("notes")!.pages.map((p) => p.map((i) => i.key.replace(/^notes-http:\/\/h\//, "")));
+
+  it("no items: no page, and no Also entry", () => {
+    expect(buildPageWidgets(null, ["notes"], NOW, [], [], [], [], [])).toEqual([]);
+  });
+
+  it("one tier, the written order; the cell family's column; nothing is happening on the band", () => {
+    const [w] = buildPageWidgets(null, ["clock", "notes"], NOW, [], [], [], [], items(["Main Stage", 3]));
+    expect(w).toMatchObject({ tab: "notes", kind: "notes", code: "NOTES", minCol: NOTE_MIN_COL });
+    expect(w.items.map((i) => i.tier)).toEqual([1, 1, 1]);
+    expect(chip(w)).toBeNull();
+  });
+
+  it("a page per document, never shared; a long document runs on to more pages at this width", () => {
+    const [w] = buildPageWidgets(null, ["notes"], NOW, [], [], [], [], items(["Main Stage", 2], ["Gaming Room", 7], ["K-Pop Room", 1]));
+    // 1920, no edge: 1728px at 300px columns, five per page.
+    expect(keys(w, 1920)).toEqual([
+      ["Main Stage.md#0", "Main Stage.md#1"],
+      ["Gaming Room.md#0", "Gaming Room.md#1", "Gaming Room.md#2", "Gaming Room.md#3", "Gaming Room.md#4"],
+      ["Gaming Room.md#5", "Gaming Room.md#6"],
+      ["K-Pop Room.md#0"],
+    ]);
+    expect(planAll([w], 1920, 0).get("notes")!.avail).toBe(10);
+  });
+});

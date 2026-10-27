@@ -159,6 +159,17 @@ const WIDGET_GITHUB: ChipColors = {
   tabBg: "bg-widget-github/[0.18]",
 };
 
+const WIDGET_NOTES: ChipColors = {
+  bg: "bg-widget-notes/[0.06]",
+  border: "border-widget-notes/25",
+  hoverBorder: "hover:border-widget-notes/40",
+  text: "text-widget-notes",
+  textDim: "text-widget-notes/70",
+  textFaint: "text-widget-notes/55",
+  divider: "border-widget-notes/45",
+  tabBg: "bg-widget-notes/[0.18]",
+};
+
 // ── Widget id → color mapping (data + utility alike) ────────────
 
 const WIDGET_MAP: Record<string, ChipColors> = {
@@ -171,6 +182,7 @@ const WIDGET_MAP: Record<string, ChipColors> = {
   sysmon: WIDGET_SYSMON,
   uptime: WIDGET_UPTIME,
   github: WIDGET_GITHUB,
+  notes: WIDGET_NOTES,
 };
 
 // ── Resolver ────────────────────────────────────────────────────
